@@ -1,13 +1,8 @@
-# IPFee
+# IPFee [DRAFT]
 
-This runs together with Solana validator software to track IP addresses and the fees for each address. It is a combination of https://github.com/bji/txingest-receiver and https://github.com/rpcpool/tpu-traffic-classifier to put IPs into different categories based on the fees paid, to prioritize high fee payers and throttle low fee payer IPs.
+This runs together with Solana validator software to track IP addresses and the fees for each address. It is a combination of https://github.com/bji/txingest-receiver and https://github.com/rpcpool/tpu-traffic-classifier to put IPs into different categories based on the fees paid, to prioritize high fee payers and throttle low fee payer IPs. Thanks to Zantentus and Triton for their influence and much of the code included so far.
 
-Variables to define:
-REFRESH_IP_SETS_FREQUENCY = 5000 # Defaults to every 5000 txs observed
-
-1. Creates a hashmap of <ip_addr, (tx_count, avg_fee)>
-2. Every REFRESH_IP_SETS_FREQUENCY txs observed, update ipsets
-3. Of the top 80% of tx count senders, those that are in the bottom 10% of fee senders will be throttled.
+This still needs the firewall rules and combination with tpuclassifier which haven't been committed yet.
 
 ## Setup
 
@@ -64,11 +59,20 @@ target/release/ipfee 127.0.0.1 15111
 
 You need to restart your validator and relayer with the the `--ipfee-host` flag, and then you need to run
 
-## Ideas
+## Ideas / TODO
+
+Variables to define:
+REFRESH_IP_SETS_FREQUENCY = 5000 # Defaults to every 5000 txs observed
+
+1. Creates a hashmap of <ip_addr, (tx_count, avg_fee)>
+2. Every REFRESH_IP_SETS_FREQUENCY txs observed, update ipsets
+3. Of the top 80% of tx count senders, those that are in the bottom 10% of fee senders will be throttled.
 
 - print IP stats, overlap with high/low/gossip
 - env var to how often to divide everything by 2
 - commit pre built binaries for east setup
+
+- Track incoming traffic with iptables, filter any IP not sending high quality txs or any obvious abusers.
 
 ## References
 
