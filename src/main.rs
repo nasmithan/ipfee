@@ -3,6 +3,7 @@ use crossbeam::channel::{unbounded, RecvTimeoutError};
 use lru::LruCache;
 use solana_sdk::ipfee::IpFeeMsg;
 use solana_sdk::signature::Signature;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -52,15 +53,27 @@ impl State {
         }
     }
 
+    // pub fn dump_ip_avg_fees(&self) {
+    //     // let mut map = HashMap::new();
+    //     let now = now_millis();
+    //     println!("data dump");
+    //     for (ip, fees) in self.ip_avg_fees.iter() {
+    //         println!("{} {} {} {}", now, ip, fees.0, fees.1);
+    //     }
+    // }
     pub fn dump_ip_avg_fees(&self) {
-        // let mut map = HashMap::new();
         let now = now_millis();
-        println!("data dump");
+        let mut outputs: Vec<(u64, String)> = Vec::new();
+
         for (ip, fees) in self.ip_avg_fees.iter() {
-            println!("{} {} {} {}", now, ip, fees.0, fees.1);
-            // map.insert(ip, fees);
+            outputs.push((fees.0, format!("{} {} {} {}", now, ip, fees.0, fees.1)));
         }
-        // println!("{} {}", now, serde_json::to_string_pretty(&map).unwrap());
+
+        outputs.sort_by_key(|k| k.0); // Sort by tx count
+
+        for (_, output) in outputs {
+            println!("{}", output);
+        }
     }
 }
 
