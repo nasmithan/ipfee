@@ -61,16 +61,15 @@ impl State {
     //     }
     // }
     pub fn dump_ip_avg_fees(&self) {
-        let now = now_millis();
         let mut outputs: Vec<(u64, String)> = Vec::new();
 
         for (ip, fees) in self.ip_avg_fees.iter() {
-            outputs.push((fees.0, format!("{} {} {} {}", now, ip, fees.0, fees.1)));
+            outputs.push((fees.0, format!("{}\t{}\t{}", ip, fees.0, fees.1)));
         }
 
-        outputs.sort_by_key(|k| k.0); // Sort by tx count
-        outputs.reverse(); // Sort in desc order
+        outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
+        println!("IP\tTxCount\tAvgFees");
         for (_, output) in outputs {
             println!("{}", output);
         }
