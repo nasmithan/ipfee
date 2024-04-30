@@ -16,26 +16,26 @@ These instructions are for _jito validators running their own relayer_.
 ### Step 1. Jito Solana with ipfee
 
 ```
-git clone https://github.com/nasmithan/solana-jito.git
-cd solana-jito
-git checkout ip-fees-1.17.31
+git clone https://github.com/nasmithan/jito-solana.git
+cd jito-solana
+git checkout v1.17.31-ipfee
 git submodule update --init --recursive
 cargo build --release
 ```
 
-Add `--ipfee-host 127.0.0.1:15555` to your startup command and then restart your validator.
+Add `--ipfee-host 127.0.0.1:25555` to your startup command and then restart your validator.
 
 ### Step 2. Jito Relayer with ipfee
 
 Setup your own relayer with these instructions if you don't already have one: https://jito-foundation.gitbook.io/mev/jito-relayer/running-a-relayer
 
 _IMPORTANT_: You must update Cargo.toml with a path to your solana SDK built in Step 1.
-Update `/home/me` in the below command to the directory your solana-jito folder is in.
+Update `/home/me` in the below command to the directory your jito-solana folder is in.
 
 ```
 git clone https://github.com/nasmithan/jito-relayer.git
 cd jito-relayer
-git checkout ip-fees-1.17.31
+git checkout v0.1.12-ipfee
 
 sed -i 's|/path/to/your/jito-solana|/home/me/jito-solana|g' Cargo.toml
 
@@ -43,7 +43,7 @@ git submodule update --init --recursive
 cargo build --release
 ```
 
-Add `--ipfee-host 127.0.0.1:15555` to your startup command and then restart your relayer.
+Add `--ipfee-host 127.0.0.1:25555` to your startup command and then restart your relayer.
 
 ### Step 3. Build & run ipfee
 
@@ -54,7 +54,7 @@ cargo build --release
 
 [TODO: ADD CONFIG.yml?]
 
-target/release/ipfee 127.0.0.1 15555
+target/release/ipfee 127.0.0.1 25555
 ```
 
 ### Step 4. Run new binaries
@@ -71,16 +71,14 @@ You need to restart your validator and relayer with the the `--ipfee-host` flag,
 
 ### bji txingester
 
-- solana https://github.com/solana-labs/solana/compare/v1.17.31...bji:solana:v1.17.31_txingest
-- solana-jito bji https://github.com/solana-labs/solana/compare/v1.17.31...bji:solana:v1.17.31-jito_txingest
+- jito-solana bji https://github.com/solana-labs/solana/compare/v1.17.31...bji:solana:v1.17.31-jito_txingest
 - jito relayer https://github.com/jito-foundation/jito-relayer/compare/master...bji:jito-relayer:v0.1.12_txingest
 
 ### nasmithan ipfee
 
-When building solana-jito, you need to run `git submodule update --init --recursive`
+When building jito-solana, you need to run `git submodule update --init --recursive`
 
-- solana ipfee https://github.com/solana-labs/solana/compare/v1.17.31...nasmithan:solana:ip-fees-1.17.31
-- solana-jito https://github.com/jito-foundation/jito-solana/compare/v1.17.31-jito...nasmithan:solana-jito:ip-fees-1.17.31
-- jito relayer https://github.com/jito-foundation/jito-relayer/compare/master...nasmithan:jito-relayer:ip-fees-1.17.31
+- jito-solana https://github.com/jito-foundation/jito-solana/compare/v1.17.31-jito...nasmithan:jito-solana:v1.17.31-ipfee
+- jito relayer https://github.com/jito-foundation/jito-relayer/compare/master...nasmithan:jito-relayer:v0.1.12-ipfee
 
 # What are shinobi's stats? Juicy? Aurora? Latitude?
