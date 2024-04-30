@@ -41,18 +41,30 @@ impl State {
         fee: u64,
     ) {
         if let Some(ip) = self.ip_lookup.get(&signature) {
-            let entry = self.ip_avg_fees.get_or_insert_mut(*ip, || (1, fee));
+            let entry = self.ip_avg_fees.get_or_insert_mut(*ip, || (0, 0));
 
-            if *entry != (1, fee) {
-                // Entry was already present and not just inserted
-                let new_count = entry.0 + 1;
-                // Calculate the new average fee for this IP
-                entry.1 = (entry.0 * entry.1 + fee) / new_count;
-                entry.0 = new_count;
-            }
-            println!("{} tx_count: {} avg_fee: {}", ip, entry.0, entry.1);
+            // println!("{} {}", entry.0, entry.1);
+            let new_count = entry.0 + 1;
+            // Calculate the new average fee for this IP, rounding
+            // to the nearest whole number.
+            entry.1 = (entry.0 * entry.1 + fee) / new_count;
+            entry.0 = new_count;
         }
     }
+
+    pub fn dump_ip_avg_fees(&self) {
+        // let mut map = HashMap::new();
+        let now = now_millis();
+        for (ip, fees) in self.ip_avg_fees.iter() {
+            println!("{} {} {} {}", now, ip, fees.0, fees.1);
+            // map.insert(ip, fees);
+        }
+        // println!("{} {}", now, serde_json::to_string_pretty(&map).unwrap());
+    }
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
 fn main() {
@@ -122,6 +134,7 @@ fn main() {
     });
 
     let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
+    let mut last_log_timestamp = 0;
 
     loop {
         // Receive with a timeout
@@ -131,6 +144,15 @@ fn main() {
             Ok(IpFeeMsg::UserTx { ip, signature }) => state.usertx(ip, signature),
             Ok(IpFeeMsg::Fee { signature, fee }) => state.fee(signature, fee),
         }
+
+        let now = now_millis();
+        if now < (last_log_timestamp + 10000) {
+            continue;
+        }
+
+        state.dump_ip_avg_fees();
+
+        last_log_timestamp = now;
     }
 }
 

@@ -858,6 +858,8 @@ dependencies = [
  "bincode",
  "crossbeam",
  "lru",
+ "serde",
+ "serde_json",
  "solana-sdk",
 ]
 
