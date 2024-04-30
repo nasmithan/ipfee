@@ -69,7 +69,7 @@ impl State {
 
         outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
-        println!("IP\tTxCount\tAvgFees");
+        println!("IP\t\tTxCount\tAvgFees");
         for (_, output) in outputs {
             println!("{}", output);
         }
