@@ -23,7 +23,7 @@ git submodule update --init --recursive
 cargo build --release
 ```
 
-Add `--ipfee-host 127.0.0.1:25555` to your startup command and then restart your validator.
+Add `--ipfee-host 127.0.0.1:15111` to your startup command and then restart your validator.
 
 ### Step 2. Jito Relayer with ipfee
 
@@ -43,18 +43,21 @@ git submodule update --init --recursive
 cargo build --release
 ```
 
-Add `--ipfee-host 127.0.0.1:25555` to your startup command and then restart your relayer.
+Add `--ipfee-host 127.0.0.1:15111` to your startup command and then restart your relayer.
 
 ### Step 3. Build & run ipfee
 
 ```
 git clone https://github.com/nasmithan/ipfee.git
 cd ipfee
+
+sed -i 's|/path/to/your/jito-solana|/home/solana/jito-solana|g' Cargo.toml
+
 cargo build --release
 
 [TODO: ADD CONFIG.yml?]
 
-target/release/ipfee 127.0.0.1 25555
+target/release/ipfee 127.0.0.1 15111
 ```
 
 ### Step 4. Run new binaries

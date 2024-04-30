@@ -55,6 +55,7 @@ impl State {
     pub fn dump_ip_avg_fees(&self) {
         // let mut map = HashMap::new();
         let now = now_millis();
+        println!("data dump");
         for (ip, fees) in self.ip_avg_fees.iter() {
             println!("{} {} {} {}", now, ip, fees.0, fees.1);
             // map.insert(ip, fees);
