@@ -3,7 +3,6 @@ use crossbeam::channel::{unbounded, RecvTimeoutError};
 use lru::LruCache;
 use solana_sdk::ipfee::IpFeeMsg;
 use solana_sdk::signature::Signature;
-use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -70,10 +69,12 @@ impl State {
         }
 
         outputs.sort_by_key(|k| k.0); // Sort by tx count
+        outputs.reverse(); // Sort in desc order
 
         for (_, output) in outputs {
             println!("{}", output);
         }
+        println!("");
     }
 }
 
