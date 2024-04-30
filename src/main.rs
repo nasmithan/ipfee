@@ -1,4 +1,5 @@
 use bincode::Options;
+use clap::{App, Arg};
 use crossbeam::channel::{unbounded, RecvTimeoutError};
 use lru::LruCache;
 use solana_sdk::ipfee::IpFeeMsg;
@@ -82,22 +83,20 @@ fn now_millis() -> u64 {
 }
 
 fn main() {
-    // Listen on a specific port; for the time being just dump events out to stdout
+    let matches = App::new("ipfee")
+        .arg(Arg::with_name("address").help("The IP address to listen on").required(true).index(1))
+        .arg(Arg::with_name("port").help("The port to listen on").required(true).index(2))
+        .get_matches();
 
-    let input_args = std::env::args().skip(1).collect::<Vec<String>>();
-
-    if input_args.len() != 2 {
-        eprintln!("ERROR: Incorrect number of arguments: must be: <LISTEN_ADDRESS> <LISTEN_PORT>");
+    let addr = matches.value_of("address").unwrap().parse::<Ipv4Addr>().unwrap_or_else(|e| {
+        eprintln!("ERROR: Invalid listen address: {e}");
         std::process::exit(-1);
-    }
+    });
 
-    let addr = input_args[0]
-        .parse::<Ipv4Addr>()
-        .unwrap_or_else(|e| error_exit(format!("ERROR: Invalid listen address {}: {e}", input_args[0])));
-
-    let port = input_args[1]
-        .parse::<u16>()
-        .unwrap_or_else(|e| error_exit(format!("ERROR: Invalid listen port {}: {e}", input_args[1])));
+    let port = matches.value_of("port").unwrap().parse::<u16>().unwrap_or_else(|e| {
+        eprintln!("ERROR: Invalid listen port: {e}");
+        std::process::exit(-1);
+    });
 
     // Listen
     let tcp_listener = loop {
