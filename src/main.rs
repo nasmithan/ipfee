@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 const PRINT_STATS_INTERVAL: u64 = 1000 * 10; // 10 seconds
 const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 30; // 30 seconds;
-                                                  // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
+const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 30; // 30 seconds;
+
+// const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
 struct State {
     // Map from tx to the IpAddr that submitted it
@@ -60,11 +62,38 @@ impl State {
         // Iterate over each key in the cache
         let keys: Vec<IpAddr> = self.ip_avg_fees.iter().map(|(ip, _)| *ip).collect();
 
+        println!("Halving tx counts");
         for key in keys {
-            if let Some((first, second)) = self.ip_avg_fees.get_mut(&key) {
+            if let Some((first, _second)) = self.ip_avg_fees.get_mut(&key) {
                 *first /= 2; // Halve the tx count
             }
         }
+    }
+
+    pub fn create_ip_blocklist(&self) {
+        // Step 1: Extract and sort all records by "first" descending
+        let mut all_records: Vec<(IpAddr, (u64, u64))> =
+            self.ip_avg_fees.iter().map(|(&ip, &fees)| (ip, fees)).collect();
+        all_records.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+
+        // Step 2: Get the first 100 items and find the 25th percentile of the "second" value
+        let top_100: Vec<&(u64, u64)> = all_records.iter().map(|item| &item.1).take(100).collect();
+        let p25_index = top_100.len() / 4; // Calculate the index for the 25th percentile
+        let sorted_by_second: Vec<&(u64, u64)> = {
+            let mut temp = top_100.clone();
+            temp.sort_by(|a, b| a.1.cmp(&b.1));
+            temp
+        };
+        let minimum_fee = sorted_by_second[p25_index].1;
+
+        // Step 3: Fetch the list of IPs in the top 500 where "second" is below "minimum fee"
+        let qualifying_ips: Vec<IpAddr> =
+            all_records.iter().filter(|&(_, fees)| fees.1 < minimum_fee).take(500).map(|(ip, _)| *ip).collect();
+
+        // TODO: Add a filter to only block an IP address if it's sent more than 50 txs?
+
+        // Print the qualifying IPs
+        println!("Qualifying IPs with second value below minimum fee ({}): {:?}", minimum_fee, qualifying_ips);
     }
 
     pub fn print_ip_stats(&self) {
@@ -163,6 +192,7 @@ fn main() {
     let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
     let mut last_log_timestamp = 0;
     let mut last_tx_count_halving_timestamp: u64 = 0;
+    let mut last_create_ip_blocklist_timestamp: u64 = 0;
 
     loop {
         // Receive with a timeout
@@ -183,10 +213,14 @@ fn main() {
 
         // Check if it's time to halve the transaction count
         if now >= (last_tx_count_halving_timestamp + TX_COUNT_HALVING_INTERVAL) {
-            // Cut them in half
-            // Implement halving logic here
             state.tx_count_havling();
             last_tx_count_halving_timestamp = now;
+        }
+
+        // Check if it's time to create ip blocklist
+        if now >= (last_create_ip_blocklist_timestamp + CREATE_IP_BLOCKLIST_INTERVAL) {
+            state.create_ip_blocklist();
+            last_create_ip_blocklist_timestamp = now;
         }
     }
 }
