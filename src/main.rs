@@ -6,11 +6,13 @@ use solana_sdk::ipfee::IpFeeMsg;
 use solana_sdk::signature::Signature;
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
+use std::process::Command;
 use std::sync::Arc;
 
-const PRINT_STATS_INTERVAL: u64 = 1000 * 10; // 10 seconds
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 30; // 30 seconds;
-const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 30; // 30 seconds;
+const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 20000; // Sanity check to not block any IPs with an average above this
+const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 30; // 10 minutes;
+const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 30; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
@@ -91,8 +93,13 @@ impl State {
         };
         let minimum_fee = sorted_by_second[p25_index].1;
 
+        // TODO: allow addresses to get unblocked
+        if minimum_fee > SANITY_DONT_BLOCK_AVG_FEE_ABOVE {
+            println!("Failed sanity check, minimum_fee {} is too high", minimum_fee);
+        }
+
         // Step 3: Fetch the list of IPs in the top 500 where avg fee is below minimum_fee to avoid being blocked.
-        let qualifying_ips: Vec<IpAddr> =
+        let ips_to_block: Vec<IpAddr> =
             all_records.iter().filter(|&(_, fees)| fees.1 < minimum_fee).take(500).map(|(ip, _)| *ip).collect();
 
         // TODO: Add a filter to only block an IP address if it's sent more than 50 txs?
@@ -102,8 +109,26 @@ impl State {
         // TODO: Write a list of top offending IPs to another file. Keep track of IPs and the total count of bad checks,
         // and how many that IP was in.
 
-        // Print the qualifying IPs
-        println!("Qualifying IPs with second value below minimum fee ({}): {:?}", minimum_fee, qualifying_ips);
+        println!("Blocking {} IPs with avg fee value below minimum fee: {}", ips_to_block.len(), minimum_fee);
+
+        // TODO: automate this, it's required to run at least once
+        // sudo ipset create custom-blacklist-ips hash:net
+
+        // TODO: Use Command::new()
+        for ip in ips_to_block {
+            // Build the full command as a single string
+            let command_string = format!("sudo ipset add custom-blacklist-ips {}", ip);
+
+            // Execute the command using a shell
+            let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
+
+            if output.status.success() {
+                println!("Successfully blocked IP: {}", ip);
+            } else {
+                let err = String::from_utf8_lossy(&output.stderr);
+                println!("Error blocking IP {}: {}", ip, err);
+            }
+        }
     }
 
     pub fn print_ip_stats(&self) {
@@ -112,7 +137,10 @@ impl State {
         let mut avg_fees: u64 = 0;
 
         for (ip, fees) in self.ip_avg_fees.iter() {
-            outputs.push((fees.0, format!("{}\t{}\t{}", ip, fees.0, fees.1)));
+            // Only print if tx count is over 100
+            if fees.0 > 100 {
+                outputs.push((fees.0, format!("{}\t{}\t{}", ip, fees.0, fees.1)));
+            }
 
             if total_txs + fees.0 != 0 {
                 avg_fees = (total_txs * avg_fees + fees.0 * fees.1) / (total_txs + fees.0);
