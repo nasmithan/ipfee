@@ -58,7 +58,7 @@ impl State {
         }
     }
 
-    pub fn tx_count_havling(&mut self) {
+    pub fn tx_count_halving(&mut self) {
         // Iterate over each key in the cache
         let keys: Vec<IpAddr> = self.ip_avg_fees.iter().map(|(ip, _)| *ip).collect();
 
@@ -71,12 +71,17 @@ impl State {
     }
 
     pub fn create_ip_blocklist(&self) {
-        // Step 1: Extract and sort all records by "first" descending
+        // Step 1: Extract and sort all records by txs descending
         let mut all_records: Vec<(IpAddr, (u64, u64))> =
-            self.ip_avg_fees.iter().map(|(&ip, &fees)| (ip, fees)).collect();
+            self.ip_avg_fees.iter().map(|(&ip, &data)| (ip, data)).collect();
+
+        if all_records.len() < 1 {
+            return;
+        }
+
         all_records.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
 
-        // Step 2: Get the first 100 items and find the 25th percentile of the "second" value
+        // Step 2: Get the first 100 items and find the 25th percentile of the avg fee value
         let top_100: Vec<&(u64, u64)> = all_records.iter().map(|item| &item.1).take(100).collect();
         let p25_index = top_100.len() / 4; // Calculate the index for the 25th percentile
         let sorted_by_second: Vec<&(u64, u64)> = {
@@ -86,11 +91,16 @@ impl State {
         };
         let minimum_fee = sorted_by_second[p25_index].1;
 
-        // Step 3: Fetch the list of IPs in the top 500 where "second" is below "minimum fee"
+        // Step 3: Fetch the list of IPs in the top 500 where avg fee is below minimum_fee to avoid being blocked.
         let qualifying_ips: Vec<IpAddr> =
             all_records.iter().filter(|&(_, fees)| fees.1 < minimum_fee).take(500).map(|(ip, _)| *ip).collect();
 
         // TODO: Add a filter to only block an IP address if it's sent more than 50 txs?
+        // Need to find a way to not do anything crazy if you haven't had leader slots or received a ton of txs.
+        // Maybe if the 100th most txs address is less than 50 or something, don't update bad, just write none?
+
+        // TODO: Write a list of top offending IPs to another file. Keep track of IPs and the total count of bad checks,
+        // and how many that IP was in.
 
         // Print the qualifying IPs
         println!("Qualifying IPs with second value below minimum fee ({}): {:?}", minimum_fee, qualifying_ips);
@@ -213,7 +223,7 @@ fn main() {
 
         // Check if it's time to halve the transaction count
         if now >= (last_tx_count_halving_timestamp + TX_COUNT_HALVING_INTERVAL) {
-            state.tx_count_havling();
+            state.tx_count_halving();
             last_tx_count_halving_timestamp = now;
         }
 
