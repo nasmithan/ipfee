@@ -60,7 +60,9 @@ impl State {
         for (ip, fees) in self.ip_avg_fees.iter() {
             outputs.push((fees.0, format!("{}\t{}\t{}", ip, fees.0, fees.1)));
 
-            avg_fees = (total_txs * avg_fees + fees.0 * fees.1) / total_txs + fees.0;
+            if total_txs + fees.0 != 0 {
+                avg_fees = (total_txs * avg_fees + fees.0 * fees.1) / (total_txs + fees.0);
+            }
             total_txs += fees.0;
         }
 
