@@ -9,9 +9,9 @@ use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
 
-const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 20000; // Sanity check to not block any IPs with an average above this
+const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 50000; // Sanity check to not block any IPs with an average above this
 const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 10; // 10 minutes;
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 20; // 20 minutes;
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
@@ -72,7 +72,7 @@ impl State {
         }
     }
 
-    pub fn create_ip_blocklist(&self) {
+    pub fn create_ip_blocklist(&mut self) {
         // Step 1: Extract and sort all records by txs descending
         let mut all_records: Vec<(IpAddr, (u64, u64))> =
             self.ip_avg_fees.iter().map(|(&ip, &data)| (ip, data)).collect();
@@ -103,8 +103,13 @@ impl State {
         }
 
         // Step 3: Fetch the list of IPs in the top 500 where avg fee is below minimum_fee to avoid being blocked.
-        let ips_to_block: Vec<IpAddr> =
-            all_records.iter().filter(|&(_, fees)| fees.1 < minimum_fee).take(500).map(|(ip, _)| *ip).collect();
+        // Only block if they've sent more than 100 txs
+        let ips_to_block: Vec<IpAddr> = all_records
+            .iter()
+            .filter(|&(_, data)| data.1 < minimum_fee && data.0 > 100)
+            .take(500)
+            .map(|(ip, _)| *ip)
+            .collect();
 
         // TODO: Add a filter to only block an IP address if it's sent more than 50 txs?
         // Need to find a way to not do anything crazy if you haven't had leader slots or received a ton of txs.
@@ -128,11 +133,14 @@ impl State {
 
             if output.status.success() {
                 println!("Successfully blocked IP: {}", ip);
+                self.ip_avg_fees.pop(&ip);
             } else {
                 let err = String::from_utf8_lossy(&output.stderr);
                 println!("Error blocking IP {}: {}", ip, err);
             }
         }
+
+        // TODO: After IP has been in the slammer for X hours, allow it to come out into a throttled set for observation to see if it's improved behavior.
     }
 
     pub fn print_ip_stats(&self) {
@@ -141,8 +149,8 @@ impl State {
         let mut avg_fees: u64 = 0;
 
         for (ip, fees) in self.ip_avg_fees.iter() {
-            // Only print if tx count is over 100
-            if fees.0 > 100 {
+            // Only print if tx count is over amount
+            if fees.0 > 50 {
                 outputs.push((fees.0, format!("{}\t{}\t{}", ip, fees.0, fees.1)));
             }
 
@@ -232,9 +240,9 @@ fn main() {
     });
 
     let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
-    let mut last_log_timestamp = 0;
-    let mut last_tx_count_halving_timestamp: u64 = 0;
-    let mut last_create_ip_blocklist_timestamp: u64 = 0;
+    let mut last_log_timestamp = now_millis();
+    let mut last_tx_count_halving_timestamp: u64 = now_millis();
+    let mut last_create_ip_blocklist_timestamp: u64 = now_millis();
 
     loop {
         // Receive with a timeout
