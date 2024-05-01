@@ -91,12 +91,15 @@ impl State {
             temp.sort_by(|a, b| a.1.cmp(&b.1));
             temp
         };
-        let minimum_fee = sorted_by_second[p25_index].1;
+        let mut minimum_fee = sorted_by_second[p25_index].1;
 
         // TODO: allow addresses to get unblocked
         if minimum_fee > SANITY_DONT_BLOCK_AVG_FEE_ABOVE {
-            println!("Failed sanity check, minimum_fee {} is too high", minimum_fee);
-            return;
+            println!(
+                "Failed sanity check, minimum_fee {} is too high, setting to {}",
+                minimum_fee, SANITY_DONT_BLOCK_AVG_FEE_ABOVE
+            );
+            minimum_fee = SANITY_DONT_BLOCK_AVG_FEE_ABOVE;
         }
 
         // Step 3: Fetch the list of IPs in the top 500 where avg fee is below minimum_fee to avoid being blocked.
@@ -113,12 +116,12 @@ impl State {
         println!("Blocking {} IPs with avg fee value below minimum fee: {}", ips_to_block.len(), minimum_fee);
 
         // TODO: automate this, it's required to run at least once
-        // sudo ipset create custom-blacklist-ips hash:net
+        // sudo ipset create custom-blocklist-ips hash:net
 
         // TODO: Use Command::new()
         for ip in ips_to_block {
             // Build the full command as a single string
-            let command_string = format!("sudo ipset add custom-blacklist-ips {}", ip);
+            let command_string = format!("sudo ipset add custom-blocklist-ips {}", ip);
 
             // Execute the command using a shell
             let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
