@@ -9,7 +9,7 @@ use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
 
-const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 20000; // Sanity check to not block any IPs with an average above this
+const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 11000; // Sanity check to not block any IPs with an average above this
 const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 30; // 10 minutes;
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 30; // 2 minutes;
