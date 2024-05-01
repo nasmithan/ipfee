@@ -9,10 +9,10 @@ use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
 
-const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 11000; // Sanity check to not block any IPs with an average above this
+const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 20000; // Sanity check to not block any IPs with an average above this
 const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 30; // 10 minutes;
-const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 30; // 2 minutes;
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 10; // 10 minutes;
+const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
@@ -96,6 +96,7 @@ impl State {
         // TODO: allow addresses to get unblocked
         if minimum_fee > SANITY_DONT_BLOCK_AVG_FEE_ABOVE {
             println!("Failed sanity check, minimum_fee {} is too high", minimum_fee);
+            return;
         }
 
         // Step 3: Fetch the list of IPs in the top 500 where avg fee is below minimum_fee to avoid being blocked.
