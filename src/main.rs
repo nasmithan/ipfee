@@ -8,6 +8,10 @@ use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+const PRINT_STATS_INTERVAL: u64 = 1000 * 10; // 10 seconds
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 30; // 30 seconds;
+                                                  // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
+
 struct State {
     // Map from tx to the IpAddr that submitted it
     ip_lookup: LruCache<Signature, IpAddr>,
@@ -52,7 +56,18 @@ impl State {
         }
     }
 
-    pub fn dump_ip_avg_fees(&self) {
+    pub fn tx_count_havling(&mut self) {
+        // Iterate over each key in the cache
+        let keys: Vec<IpAddr> = self.ip_avg_fees.iter().map(|(ip, _)| *ip).collect();
+
+        for key in keys {
+            if let Some((first, second)) = self.ip_avg_fees.get_mut(&key) {
+                *first /= 2; // Halve the tx count
+            }
+        }
+    }
+
+    pub fn print_ip_stats(&self) {
         let mut outputs: Vec<(u64, String)> = Vec::new();
         let mut total_txs: u64 = 0;
         let mut avg_fees: u64 = 0;
@@ -147,6 +162,7 @@ fn main() {
 
     let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
     let mut last_log_timestamp = 0;
+    let mut last_tx_count_halving_timestamp: u64 = 0;
 
     loop {
         // Receive with a timeout
@@ -158,12 +174,19 @@ fn main() {
         }
 
         let now = now_millis();
-        if now < (last_log_timestamp + 10000) {
-            continue;
+
+        // Check if it's time to print stats
+        if now >= (last_log_timestamp + PRINT_STATS_INTERVAL) {
+            state.print_ip_stats();
+            last_log_timestamp = now;
         }
 
-        state.dump_ip_avg_fees();
-
-        last_log_timestamp = now;
+        // Check if it's time to halve the transaction count
+        if now >= (last_tx_count_halving_timestamp + TX_COUNT_HALVING_INTERVAL) {
+            // Cut them in half
+            // Implement halving logic here
+            state.tx_count_havling();
+            last_tx_count_halving_timestamp = now;
+        }
     }
 }
