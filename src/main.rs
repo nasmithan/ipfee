@@ -183,7 +183,13 @@ impl State {
         for (ip, stats) in self.ip_avg_fees.iter() {
             // Only print if tx count is over amount
             if stats.tx_count > 50 {
-                outputs.push((stats.tx_count, format!("{}\t{}\t{}", ip, stats.tx_count, stats.avg_fee)));
+                outputs.push((
+                    stats.tx_count,
+                    format!(
+                        "{}\t{}\t{}\t{}\t{}\t{}",
+                        ip, stats.tx_count, stats.avg_fee, stats.min_fee, stats.max_fee, stats.dup_count
+                    ),
+                ));
             }
 
             if total_txs + stats.tx_count != 0 {
@@ -195,7 +201,7 @@ impl State {
         outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
         println!("TotalTxs: {}, AvgFees: {}", total_txs, avg_fees);
-        println!("IP\t\tTxCount\tAvgFees");
+        println!("IP\t\tTxCount\tAvgFee\tMinFee\tMaxFee\tDupCount");
         for (_, output) in outputs {
             println!("{}", output);
         }
