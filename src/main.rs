@@ -140,7 +140,7 @@ impl State {
             .iter()
             .take(2000)
             .filter_map(|(ip, stats)| {
-                if stats.avg_fee < minimum_fee && stats.tx_count > MIN_TXS_IN_INTERVAL_TO_BAN {
+                if stats.avg_fee < std::cmp::max(minimum_fee, 30000) && stats.tx_count > MIN_TXS_IN_INTERVAL_TO_BAN {
                     Some(*ip) // Dereference and copy the IP address
                 } else {
                     None
