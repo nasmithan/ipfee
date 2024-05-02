@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 50000; // Sanity check to not block any IPs with an average above this
 const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 20; // 20 minutes;
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 200; // 200 minutes;
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 61 * 1; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
