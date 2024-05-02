@@ -186,7 +186,7 @@ impl State {
                 outputs.push((
                     stats.tx_count,
                     format!(
-                        "{}\t{}\t{}\t{}\t{}\t{}",
+                        "{}\t{}\t{}\t\t{}\t{}\t{}",
                         ip, stats.tx_count, stats.dup_count, stats.avg_fee, stats.min_fee, stats.max_fee
                     ),
                 ));
