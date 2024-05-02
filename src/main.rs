@@ -9,10 +9,11 @@ use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
 
-const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 50000; // Sanity check to not block any IPs with an average above this
-const PRINT_STATS_INTERVAL: u64 = 1000 * 10; // 10 seconds
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 200; // 200 minutes;
-const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 61 * 1; // 2 minutes;
+const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 150000; // Sanity check to not block any IPs with an average above this
+const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 10; // 10 minutes
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 10; // 200 minutes;
+const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 5; // 5 minutes;
+const MIN_TXS_IN_INTERVAL_TO_BAN: u64 = 20;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
@@ -137,9 +138,9 @@ impl State {
 
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
-            .take(500)
+            .take(2000)
             .filter_map(|(ip, stats)| {
-                if stats.avg_fee < minimum_fee && stats.tx_count > 100 {
+                if stats.avg_fee < minimum_fee && stats.tx_count > MIN_TXS_IN_INTERVAL_TO_BAN {
                     Some(*ip) // Dereference and copy the IP address
                 } else {
                     None
