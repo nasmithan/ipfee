@@ -9,12 +9,12 @@ use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
 
-const BLOCK_AVG_FEE_BELOW: u64 = 15000;
+const BLOCK_AVG_FEE_BELOW: u64 = 60000;
 const BLOCK_MIN_TXS: u64 = 100;
-// const BLOCK_DUPS_ABOVE: u64 = 1000;
+const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 4.0;
 const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 2; // 2 minute
 const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
-const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 5; // 5 minutes;
+const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
@@ -122,8 +122,14 @@ impl State {
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
             .filter_map(|(ip, stats)| {
-                if stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS {
-                    // TODO: Start blocking dupes?
+                if (stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS)
+                    || ((stats.dup_count as f64 / stats.tx_count as f64) > BLOCK_ABOVE_DUPS_TX_RATIO
+                        && stats.avg_fee < 300000
+                        && stats.tx_count > BLOCK_MIN_TXS)
+                {
+                    // Block if:
+                    // 1. AvgFee < 60k lamports && TxCount > 100
+                    // 2. (DupCount / TxCount) > 4, avg fee below 300k lamports, and above 100txs
                     Some(*ip) // Dereference and copy the IP address
                 } else {
                     None
