@@ -11,9 +11,8 @@ use std::sync::Arc;
 
 const BLOCK_AVG_FEE_BELOW: u64 = 60000;
 const BLOCK_MIN_TXS: u64 = 100;
-const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 4.0;
-const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 2; // 2 minute
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
+const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 10.0;
+const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 10; // 10 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
@@ -25,11 +24,12 @@ struct IpStats {
     min_fee: u64,
     max_fee: u64,
     dup_count: u64,
+    blocked: bool,
 }
 
 impl Default for IpStats {
     fn default() -> Self {
-        IpStats { tx_count: 0, avg_fee: 0, min_fee: 0, max_fee: 0, dup_count: 0 }
+        IpStats { tx_count: 0, avg_fee: 0, min_fee: 0, max_fee: 0, dup_count: 0, blocked: false }
     }
 }
 
@@ -90,18 +90,18 @@ impl State {
         }
     }
 
-    pub fn tx_count_halving(&mut self) {
-        // Iterate over each key in the cache
-        let keys: Vec<IpAddr> = self.ip_avg_fees.iter().map(|(ip, _)| *ip).collect();
+    // pub fn tx_count_halving(&mut self) {
+    //     // Iterate over each key in the cache
+    //     let keys: Vec<IpAddr> = self.ip_avg_fees.iter().map(|(ip, _)| *ip).collect();
 
-        println!("Halving tx counts");
-        for key in keys {
-            if let Some(stats) = self.ip_avg_fees.get_mut(&key) {
-                stats.tx_count /= 2; // Halve the tx count
-                stats.dup_count /= 2; // Halve the tx count
-            }
-        }
-    }
+    //     println!("Halving tx counts");
+    //     for key in keys {
+    //         if let Some(stats) = self.ip_avg_fees.get_mut(&key) {
+    //             stats.tx_count /= 2; // Halve the tx count
+    //             stats.dup_count /= 2; // Halve the tx count
+    //         }
+    //     }
+    // }
 
     pub fn create_ip_blocklist(&mut self) {
         // Step 1: Extract and sort all records by txs descending
@@ -124,12 +124,12 @@ impl State {
             .filter_map(|(ip, stats)| {
                 if (stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS)
                     || ((stats.dup_count as f64 / stats.tx_count as f64) > BLOCK_ABOVE_DUPS_TX_RATIO
-                        && stats.avg_fee < 300000
-                        && stats.tx_count > BLOCK_MIN_TXS)
+                        && stats.avg_fee < 120000
+                        && (stats.tx_count > 50 || stats.dup_count > 500))
                 {
                     // Block if:
                     // 1. AvgFee < 60k lamports && TxCount > 100
-                    // 2. (DupCount / TxCount) > 4, avg fee below 300k lamports, and above 100txs
+                    // 2. (DupCount / TxCount) > 10, avg fee below 120k lamports, and above 50txs or >500 dups.
                     Some(*ip) // Dereference and copy the IP address
                 } else {
                     None
@@ -157,7 +157,9 @@ impl State {
 
             if output.status.success() {
                 println!("Successfully blocked IP: {}", ip);
-                self.ip_avg_fees.pop(&ip);
+                if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
+                    stats.blocked = true;
+                }
             } else {
                 let err = String::from_utf8_lossy(&output.stderr);
                 println!("Error blocking IP {}: {}", ip, err);
@@ -177,8 +179,8 @@ impl State {
                 outputs.push((
                     stats.tx_count,
                     format!(
-                        "{}\t{}\t{}\t\t{}\t{}\t{}",
-                        ip, stats.tx_count, stats.dup_count, stats.avg_fee, stats.min_fee, stats.max_fee
+                        "{}\t{}\t{}\t\t{}\t{}\t{}\t{}",
+                        ip, stats.tx_count, stats.dup_count, stats.avg_fee, stats.min_fee, stats.max_fee, stats.blocked
                     ),
                 ));
             }
@@ -193,7 +195,7 @@ impl State {
         outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
         println!("TotalIps: {}, TotalTxs: {}, AvgFees: {}", total_ips, total_txs, avg_fees);
-        println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee");
+        println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee\tBlocked");
         for (_, output) in outputs {
             println!("{}", output);
         }
@@ -271,7 +273,7 @@ fn main() {
 
     let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
     let mut last_log_timestamp = now_millis();
-    let mut last_tx_count_halving_timestamp: u64 = now_millis();
+    // let mut last_tx_count_halving_timestamp: u64 = now_millis();
     let mut last_create_ip_blocklist_timestamp: u64 = now_millis();
 
     loop {
@@ -292,10 +294,10 @@ fn main() {
         }
 
         // Check if it's time to halve the transaction count
-        if now >= (last_tx_count_halving_timestamp + TX_COUNT_HALVING_INTERVAL) {
-            state.tx_count_halving();
-            last_tx_count_halving_timestamp = now;
-        }
+        // if now >= (last_tx_count_halving_timestamp + TX_COUNT_HALVING_INTERVAL) {
+        //     state.tx_count_halving();
+        //     last_tx_count_halving_timestamp = now;
+        // }
 
         // Check if it's time to create ip blocklist
         if now >= (last_create_ip_blocklist_timestamp + CREATE_IP_BLOCKLIST_INTERVAL) {
