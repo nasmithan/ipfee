@@ -177,6 +177,7 @@ impl State {
 
     pub fn print_ip_stats(&self) {
         let mut outputs: Vec<(u64, String)> = Vec::new();
+        let mut total_ips: u64 = 0;
         let mut total_txs: u64 = 0;
         let mut avg_fees: u64 = 0;
 
@@ -196,11 +197,12 @@ impl State {
                 avg_fees = (total_txs * avg_fees + stats.tx_count * stats.avg_fee) / (total_txs + stats.tx_count);
             }
             total_txs += stats.tx_count;
+            total_ips += 1;
         }
 
         outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
-        println!("TotalTxs: {}, AvgFees: {}", total_txs, avg_fees);
+        println!("TotalIps: {}, TotalTxs: {}, AvgFees: {}", total_ips, total_txs, avg_fees);
         println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee");
         for (_, output) in outputs {
             println!("{}", output);
