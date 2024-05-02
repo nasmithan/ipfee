@@ -9,11 +9,12 @@ use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
 
-const SANITY_DONT_BLOCK_AVG_FEE_ABOVE: u64 = 150000; // Sanity check to not block any IPs with an average above this
-const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 10; // 10 minutes
-const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 10; // 200 minutes;
+const BLOCK_AVG_FEE_BELOW: u64 = 15000;
+const BLOCK_MIN_TXS: u64 = 100;
+// const BLOCK_DUPS_ABOVE: u64 = 1000;
+const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 2; // 2 minute
+const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 5; // 5 minutes;
-const MIN_TXS_IN_INTERVAL_TO_BAN: u64 = 20;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
@@ -97,6 +98,7 @@ impl State {
         for key in keys {
             if let Some(stats) = self.ip_avg_fees.get_mut(&key) {
                 stats.tx_count /= 2; // Halve the tx count
+                stats.dup_count /= 2; // Halve the tx count
             }
         }
     }
@@ -113,34 +115,15 @@ impl State {
             return;
         }
 
-        all_records.sort_by(|a, b| b.1.tx_count.cmp(&a.1.tx_count));
-
-        let top_100: Vec<&IpStats> = all_records
-            .iter()
-            .take(100)
-            .map(|(_, stats)| stats) // Collect references to the stats
-            .collect();
-
-        let p25_index = top_100.len() / 4;
-
-        let mut sorted_by_fee: Vec<&IpStats> = top_100.clone();
-        sorted_by_fee.sort_by(|a, b| a.avg_fee.partial_cmp(&b.avg_fee).unwrap_or(std::cmp::Ordering::Equal));
-
-        let mut minimum_fee = sorted_by_fee[p25_index].avg_fee;
-
-        if minimum_fee > SANITY_DONT_BLOCK_AVG_FEE_ABOVE {
-            println!(
-                "Failed sanity check, minimum_fee {} is too high, setting to {}",
-                minimum_fee, SANITY_DONT_BLOCK_AVG_FEE_ABOVE
-            );
-            minimum_fee = SANITY_DONT_BLOCK_AVG_FEE_ABOVE;
-        }
+        // const BLOCK_AVG_FEE_BELOW: u64 = 10000;
+        // const BLOCK_MIN_TXS: u64 = 100;
+        // const BLOCK_DUPS_ABOVE: u64 = 1000;
 
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
-            .take(2000)
             .filter_map(|(ip, stats)| {
-                if stats.avg_fee < std::cmp::max(minimum_fee, 30000) && stats.tx_count > MIN_TXS_IN_INTERVAL_TO_BAN {
+                if stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS {
+                    // TODO: Start blocking dupes?
                     Some(*ip) // Dereference and copy the IP address
                 } else {
                     None
@@ -155,7 +138,7 @@ impl State {
         // TODO: Write a list of top offending IPs to another file. Keep track of IPs and the total count of bad checks,
         // and how many that IP was in.
 
-        println!("Blocking {} IPs with avg fee value below minimum fee: {}", ips_to_block.len(), minimum_fee);
+        println!("Blocking {} IPs", ips_to_block.len());
 
         // TODO: automate this, it's required to run at least once
         // sudo ipset create custom-blocklist-ips hash:net
