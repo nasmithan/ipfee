@@ -80,7 +80,7 @@ impl State {
             entry.avg_fee = (entry.tx_count * entry.avg_fee + fee) / new_count;
             entry.tx_count = new_count;
 
-            if fee < entry.min_fee {
+            if entry.min_fee == 0 || fee < entry.min_fee {
                 entry.min_fee = fee;
             } else if fee > entry.max_fee {
                 entry.max_fee = fee;
@@ -187,7 +187,7 @@ impl State {
                     stats.tx_count,
                     format!(
                         "{}\t{}\t{}\t{}\t{}\t{}",
-                        ip, stats.tx_count, stats.avg_fee, stats.min_fee, stats.max_fee, stats.dup_count
+                        ip, stats.tx_count, stats.dup_count, stats.avg_fee, stats.min_fee, stats.max_fee
                     ),
                 ));
             }
@@ -201,7 +201,7 @@ impl State {
         outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
         println!("TotalTxs: {}, AvgFees: {}", total_txs, avg_fees);
-        println!("IP\t\tTxCount\tAvgFee\tMinFee\tMaxFee\tDupCount");
+        println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee");
         for (_, output) in outputs {
             println!("{}", output);
         }
