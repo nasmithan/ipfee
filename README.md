@@ -2,7 +2,8 @@
 
 This runs together with Solana validator software to track IP addresses and the fees for each address. It uses some code and insights from https://github.com/bji/txingest-receiver and https://github.com/rpcpool/tpu-traffic-classifier. Thanks to Zantentu and Triton for their influence and some of the code.
 
-See analysis.txt for 24hrs of analysis on a 300k SOL staked node.
+See analysis.txt for 24hrs of analysis on a 300k SOL staked node. 
+<img width="704" alt="image" src="https://github.com/nasmithan/ipfee/assets/6745038/669ae32f-d6b5-4dd4-b8aa-06cb40b6343f">
 
 ## Setup
 
