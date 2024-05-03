@@ -115,10 +115,6 @@ impl State {
             return;
         }
 
-        // const BLOCK_AVG_FEE_BELOW: u64 = 10000;
-        // const BLOCK_MIN_TXS: u64 = 100;
-        // const BLOCK_DUPS_ABOVE: u64 = 1000;
-
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
             .filter_map(|(ip, stats)| {
@@ -137,13 +133,6 @@ impl State {
                 }
             })
             .collect();
-
-        // TODO: Add a filter to only block an IP address if it's sent more than 50 txs?
-        // Need to find a way to not do anything crazy if you haven't had leader slots or received a ton of txs.
-        // Maybe if the 100th most txs address is less than 50 or something, don't update bad, just write none?
-
-        // TODO: Write a list of top offending IPs to another file. Keep track of IPs and the total count of bad checks,
-        // and how many that IP was in.
 
         println!("Blocking {} IPs", ips_to_block.len());
 
