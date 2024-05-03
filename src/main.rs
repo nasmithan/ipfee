@@ -122,10 +122,11 @@ impl State {
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
             .filter_map(|(ip, stats)| {
-                if (stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS)
+                if ((stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS)
                     || ((stats.dup_count as f64 / stats.tx_count as f64) > BLOCK_ABOVE_DUPS_TX_RATIO
                         && stats.avg_fee < 120000
-                        && (stats.tx_count > 50 || stats.dup_count > 500))
+                        && (stats.tx_count > 50 || stats.dup_count > 500)))
+                    && !stats.blocked
                 {
                     // Block if:
                     // 1. AvgFee < 60k lamports && TxCount > 100
@@ -151,15 +152,17 @@ impl State {
 
         // TODO: Use Command::new()
         for ip in ips_to_block {
+            // Set IP as blocked
+            if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
+                stats.blocked = true;
+            }
+
             let command_string = format!("sudo ipset add custom-blocklist-ips {}", ip);
 
             let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
 
             if output.status.success() {
                 println!("Successfully blocked IP: {}", ip);
-                if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
-                    stats.blocked = true;
-                }
             } else {
                 let err = String::from_utf8_lossy(&output.stderr);
                 println!("Error blocking IP {}: {}", ip, err);
@@ -179,7 +182,7 @@ impl State {
                 outputs.push((
                     stats.tx_count,
                     format!(
-                        "{}\t{}\t{}\t\t{}\t{}\t{}\t{}",
+                        "{}\t{}\t{}\t\t{}\t{}\t{}\t\t{}",
                         ip, stats.tx_count, stats.dup_count, stats.avg_fee, stats.min_fee, stats.max_fee, stats.blocked
                     ),
                 ));
@@ -195,7 +198,7 @@ impl State {
         outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
 
         println!("TotalIps: {}, TotalTxs: {}, AvgFees: {}", total_ips, total_txs, avg_fees);
-        println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee\tBlocked");
+        println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee\t\tBlocked");
         for (_, output) in outputs {
             println!("{}", output);
         }
