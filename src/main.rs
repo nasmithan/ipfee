@@ -2,8 +2,13 @@ use bincode::Options;
 use clap::{App, Arg};
 use crossbeam::channel::{unbounded, RecvTimeoutError};
 use lru::LruCache;
+use serde::{Deserialize, Serialize};
+use serde_json::to_writer_pretty;
 use solana_sdk::ipfee::IpFeeMsg;
 use solana_sdk::signature::Signature;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
 use std::process::Command;
@@ -17,7 +22,7 @@ const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct IpStats {
     tx_count: u64,
     avg_fee: u64,
@@ -159,39 +164,52 @@ impl State {
         }
     }
 
-    pub fn print_ip_stats(&self) {
-        let mut outputs: Vec<(u64, String)> = Vec::new();
-        let mut total_ips: u64 = 0;
-        let mut total_txs: u64 = 0;
-        let mut avg_fees: u64 = 0;
+    pub fn write_ip_stats_to_json(
+        &self,
+        file_path: &str,
+    ) {
+        let mut outputs: Vec<(&IpAddr, &IpStats)> = self.ip_avg_fees.iter().collect();
+        outputs.sort_by(|a, b| b.1.tx_count.cmp(&a.1.tx_count)); // Sort by tx count desc
 
-        for (ip, stats) in self.ip_avg_fees.iter() {
-            // Only print if tx count is over amount
-            if stats.tx_count > 50 {
-                outputs.push((
-                    stats.tx_count,
-                    format!(
-                        "{}\t{}\t{}\t\t{}\t{}\t{}\t\t{}",
-                        ip, stats.tx_count, stats.dup_count, stats.avg_fee, stats.min_fee, stats.max_fee, stats.blocked
-                    ),
-                ));
+        let json_map: HashMap<String, IpStats> =
+            outputs.into_iter().map(|(ip, stats)| (ip.to_string(), stats.clone())).collect();
+
+        let file = File::create(file_path).expect("Unable to create file");
+        let writer = BufWriter::new(file);
+
+        to_writer_pretty(writer, &json_map).expect("Unable to write JSON");
+    }
+
+    pub fn read_ip_stats_from_json(
+        &mut self,
+        file_path: &str,
+    ) {
+        let file = match File::open(file_path) {
+            Ok(file) => file,
+            Err(_) => {
+                println!("Error reading file");
+                return;
+            },
+        };
+        let reader = BufReader::new(file);
+
+        let json_map: HashMap<String, IpStats> = match serde_json::from_reader(reader) {
+            Ok(data) => data,
+            Err(_) => {
+                println!("Error parsing JSON");
+                return;
+            },
+        };
+
+        self.ip_avg_fees.clear();
+        let mut count = 0;
+        for (ip_str, stats) in json_map {
+            if let Ok(ip) = ip_str.parse::<IpAddr>() {
+                self.ip_avg_fees.put(ip, stats);
+                count += 1;
             }
-
-            if total_txs + stats.tx_count != 0 {
-                avg_fees = (total_txs * avg_fees + stats.tx_count * stats.avg_fee) / (total_txs + stats.tx_count);
-            }
-            total_txs += stats.tx_count;
-            total_ips += 1;
         }
-
-        outputs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by tx count desc
-
-        println!("TotalIps: {}, TotalTxs: {}, AvgFees: {}", total_ips, total_txs, avg_fees);
-        println!("IP\t\tTxCount\tDupCount\tAvgFee\tMinFee\tMaxFee\t\tBlocked");
-        for (_, output) in outputs {
-            println!("{}", output);
-        }
-        println!("");
+        println!("Successfully loaded {} records from file", count);
     }
 }
 
@@ -203,6 +221,7 @@ fn main() {
     let matches = App::new("ipfee")
         .arg(Arg::with_name("address").help("The IP address to listen on").required(true).index(1))
         .arg(Arg::with_name("port").help("The port to listen on").required(true).index(2))
+        .arg(Arg::with_name("file_path").help("The file path to read/write state").required(true).index(3))
         .get_matches();
 
     let addr = matches.value_of("address").unwrap().parse::<Ipv4Addr>().unwrap_or_else(|e| {
@@ -212,6 +231,11 @@ fn main() {
 
     let port = matches.value_of("port").unwrap().parse::<u16>().unwrap_or_else(|e| {
         eprintln!("ERROR: Invalid listen port: {e}");
+        std::process::exit(-1);
+    });
+
+    let file_path = matches.value_of("file_path").unwrap().parse::<String>().unwrap_or_else(|e| {
+        eprintln!("ERROR: Invalid file path: {e}");
         std::process::exit(-1);
     });
 
@@ -264,7 +288,11 @@ fn main() {
     });
 
     let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
-    let mut last_log_timestamp = now_millis();
+
+    // Load state from existing json file (if exists)
+    state.read_ip_stats_from_json(&file_path);
+
+    let mut last_write_timestamp = now_millis();
     // let mut last_tx_count_halving_timestamp: u64 = now_millis();
     let mut last_create_ip_blocklist_timestamp: u64 = now_millis();
 
@@ -279,10 +307,10 @@ fn main() {
 
         let now = now_millis();
 
-        // Check if it's time to print stats
-        if now >= (last_log_timestamp + PRINT_STATS_INTERVAL) {
-            state.print_ip_stats();
-            last_log_timestamp = now;
+        // Check if it's time to write stats
+        if now >= (last_write_timestamp + PRINT_STATS_INTERVAL) {
+            state.write_ip_stats_to_json(&file_path);
+            last_write_timestamp = now;
         }
 
         // Check if it's time to halve the transaction count
