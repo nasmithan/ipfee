@@ -17,7 +17,7 @@ use std::sync::Arc;
 const BLOCK_AVG_FEE_BELOW: u64 = 60000;
 const BLOCK_MIN_TXS: u64 = 100;
 const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 10.0;
-const PRINT_STATS_INTERVAL: u64 = 1000 * 60 * 10; // 10 minute
+const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
@@ -221,7 +221,7 @@ fn main() {
     let matches = App::new("ipfee")
         .arg(Arg::with_name("address").help("The IP address to listen on").required(true).index(1))
         .arg(Arg::with_name("port").help("The port to listen on").required(true).index(2))
-        .arg(Arg::with_name("file_path").help("The file path to read/write state").required(true).index(3))
+        .arg(Arg::with_name("file_path").help("The .json file path to read/write state").required(true).index(3))
         .get_matches();
 
     let addr = matches.value_of("address").unwrap().parse::<Ipv4Addr>().unwrap_or_else(|e| {
@@ -308,7 +308,7 @@ fn main() {
         let now = now_millis();
 
         // Check if it's time to write stats
-        if now >= (last_write_timestamp + PRINT_STATS_INTERVAL) {
+        if now >= (last_write_timestamp + WRITE_STATS_INTERVAL) {
             state.write_ip_stats_to_json(&file_path);
             last_write_timestamp = now;
         }
