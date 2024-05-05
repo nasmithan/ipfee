@@ -26,7 +26,7 @@ const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
 
 // How close to leader slots to be considered near leader slots
-const NEAR_LEADER_SLOTS: u64 = 10;
+const NEAR_LEADER_SLOTS: u64 = 30;
 
 const RPC_URL: &str = "http://127.0.0.1:8899";
 
