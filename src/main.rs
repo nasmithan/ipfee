@@ -13,6 +13,7 @@ use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Instant;
 
 const BLOCK_AVG_FEE_BELOW: u64 = 60000;
 const BLOCK_MIN_TXS: u64 = 100;
@@ -168,26 +169,26 @@ impl State {
         &self,
         file_path: &str,
     ) {
-        let mut outputs: Vec<(&IpAddr, &IpStats)> = self.ip_avg_fees.iter().collect();
-        outputs.sort_by(|a, b| b.1.tx_count.cmp(&a.1.tx_count)); // Sort by tx count desc
-
+        let start = Instant::now();
         let json_map: HashMap<String, IpStats> =
-            outputs.into_iter().map(|(ip, stats)| (ip.to_string(), stats.clone())).collect();
-
+            self.ip_avg_fees.iter().map(|(ip, stats)| (ip.to_string(), stats.clone())).collect();
         let file = File::create(file_path).expect("Unable to create file");
         let writer = BufWriter::new(file);
 
         to_writer_pretty(writer, &json_map).expect("Unable to write JSON");
+        let duration = start.elapsed(); // Calculate elapsed time
+        println!("Successfully wrote json output, time elapsed: {:?}", duration);
     }
 
     pub fn read_ip_stats_from_json(
         &mut self,
         file_path: &str,
     ) {
+        let start = Instant::now();
         let file = match File::open(file_path) {
             Ok(file) => file,
             Err(_) => {
-                println!("Error reading file");
+                println!("Error reading file on startup. Ignore if first time running.");
                 return;
             },
         };
@@ -209,7 +210,8 @@ impl State {
                 count += 1;
             }
         }
-        println!("Successfully loaded {} records from file", count);
+        let duration = start.elapsed(); // Calculate elapsed time
+        println!("Successfully loaded {} records from file in {:?}", count, duration);
     }
 }
 

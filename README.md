@@ -2,7 +2,7 @@
 
 This runs together with Solana validator software to track IP addresses and the fees for each address. It uses some code and insights from https://github.com/bji/txingest-receiver and https://github.com/rpcpool/tpu-traffic-classifier. Thanks to Zantentu and Triton for their influence and some of the code.
 
-See analysis.txt for 24hrs of analysis on a 300k SOL staked node. 
+See analysis.txt for 24hrs of analysis on a 300k SOL staked node.
 <img width="704" alt="image" src="https://github.com/nasmithan/ipfee/assets/6745038/669ae32f-d6b5-4dd4-b8aa-06cb40b6343f">
 
 ## Setup
@@ -61,8 +61,10 @@ cargo build --release
 Run the file (need to run as root user if you want to add the ipset blocks)
 
 ```
-target/release/ipfee 127.0.0.1 15111
+target/release/ipfee 127.0.0.1 15111 ipfee.json
 ```
+
+You can view the json output pretty printed this this command: `jq -r '["IP", "TxCount", "DupCount", "AvgFee", "MinFee", "MaxFee", "Blocked"], (to_entries | sort_by(-.value.tx_count)[] | [.key, .value.tx_count, .value.dup_count, .value.avg_fee, .value.min_fee, .value.max_fee, .value.blocked]) | @tsv' ipfee.json | column -t`
 
 ### Step 4. Run new binaries
 
@@ -89,6 +91,11 @@ Flush IPs blocked: `sudo ipset flush custom-blocklist-ips`
 
 ## Ideas / TODO
 
+- 2 caches, one close to leader slots and one far away.
+- Store/read from .json file?
+- Add local DB to store cached information each time banning is performed. Load on startup.
+- Halve data every X hours?
+- Unblock IPs occassionally?
 - Temporary jail IPs
 - Cluster analysis? Find outliers and boot them?
 
