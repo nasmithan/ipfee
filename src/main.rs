@@ -2,11 +2,13 @@ use bincode::Options;
 use clap::{App, Arg};
 use crossbeam::channel::{unbounded, RecvTimeoutError};
 use lru::LruCache;
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::to_writer_pretty;
 use solana_sdk::ipfee::IpFeeMsg;
 use solana_sdk::signature::Signature;
 use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
@@ -16,10 +18,14 @@ use std::sync::Arc;
 use std::time::Instant;
 
 const BLOCK_AVG_FEE_BELOW: u64 = 60000;
-const BLOCK_MIN_TXS: u64 = 100;
-const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 10.0;
+const BLOCK_MIN_TXS: u64 = 1000;
+const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 20.0;
+
+const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 5; // 5 seconds
 const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
-const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes;
+const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
+
+const RPC_URL: &str = "http://127.0.0.1:8899";
 
 // const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
 
@@ -40,7 +46,9 @@ impl Default for IpStats {
 }
 
 struct State {
-    // Map from tx to the IpAddr that submitted it
+    identity: String,
+    current_slot: u64,
+    current_epoch: u64,
     ip_lookup: LruCache<Signature, IpAddr>,
     ip_avg_fees: LruCache<IpAddr, IpStats>,
 }
@@ -48,6 +56,9 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
+            identity: String::new(),
+            current_slot: 0,
+            current_epoch: 0,
             ip_lookup: LruCache::new(NonZeroUsize::new(100_000).unwrap()),
             ip_avg_fees: LruCache::new(NonZeroUsize::new(100_000).unwrap()),
         }
@@ -55,8 +66,17 @@ impl Default for State {
 }
 
 impl State {
-    pub fn new(capacity: NonZeroUsize) -> Self {
-        Self { ip_lookup: LruCache::new(capacity), ip_avg_fees: LruCache::new(capacity) }
+    pub fn new(
+        capacity: NonZeroUsize,
+        identity: String,
+    ) -> Self {
+        Self {
+            ip_lookup: LruCache::new(capacity),
+            ip_avg_fees: LruCache::new(capacity),
+            identity,
+            current_slot: 0,
+            current_epoch: 0,
+        }
     }
 
     pub fn usertx(
@@ -127,12 +147,15 @@ impl State {
                 if ((stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS)
                     || ((stats.dup_count as f64 / stats.tx_count as f64) > BLOCK_ABOVE_DUPS_TX_RATIO
                         && stats.avg_fee < 120000
-                        && (stats.tx_count > 50 || stats.dup_count > 500)))
+                        && stats.min_fee < 15000
+                        && (stats.tx_count > 50 || stats.dup_count > 500))
+                    || (stats.tx_count < 1 && stats.dup_count > 1000))
                     && !stats.blocked
                 {
                     // Block if:
-                    // 1. AvgFee < 60k lamports && TxCount > 100
-                    // 2. (DupCount / TxCount) > 10, avg fee below 120k lamports, and above 50txs or >500 dups.
+                    // 1. AvgFee < 60k lamports && TxCount > 200
+                    // 2. (DupCount / TxCount) > 20, avg fee below 120k lamports and min_fee < 15k, and above 50txs or >500 dups.
+                    // 3. tx_count = 0, dup_count > 1000
                     Some(*ip) // Dereference and copy the IP address
                 } else {
                     None
@@ -213,10 +236,74 @@ impl State {
         let duration = start.elapsed(); // Calculate elapsed time
         println!("Successfully loaded {} records from file in {:?}", count, duration);
     }
+
+    fn get_epoch_info(&mut self) {
+        let client = Client::new();
+        let request_body = r#"{"jsonrpc":"2.0","id":1,"method":"getEpochInfo"}"#;
+
+        // Handle the result of `send` using `match`
+        let response = match client.post(RPC_URL).header("Content-Type", "application/json").body(request_body).send() {
+            Ok(response) => response,
+            Err(e) => {
+                eprintln!("Failed to send getEpochInfo request: {e}");
+                return; // Exit the function early
+            },
+        };
+
+        // Handle the result of `json` using `match`
+        let epoch_info_response: EpochInfoResponse = match response.json() {
+            Ok(parsed_response) => parsed_response,
+            Err(e) => {
+                eprintln!("Failed to parse getEpochInfo JSON response: {e}");
+                return; // Exit the function early
+            },
+        };
+
+        self.current_slot = epoch_info_response.result.absolute_slot;
+        if self.current_epoch != epoch_info_response.result.epoch {
+            self.current_epoch = epoch_info_response.result.epoch;
+        }
+
+        println!("Current Identity: {}, Slot: {}, Epoch: {}", self.identity, self.current_slot, self.current_epoch);
+    }
 }
 
 fn now_millis() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
+// Struct for deserializing JSON response
+#[derive(Deserialize)]
+struct IdentityResponse {
+    result: IdentityResult,
+}
+
+#[derive(Deserialize)]
+struct IdentityResult {
+    identity: String,
+}
+
+// Modified synchronous versions of async functions
+fn get_validator_identity() -> Result<String, Box<dyn Error>> {
+    let client = Client::new();
+    let request_body = r#"{"jsonrpc":"2.0","id":1,"method":"getIdentity"}"#;
+
+    let response = client.post(RPC_URL).header("Content-Type", "application/json").body(request_body).send()?;
+
+    let identity_response: IdentityResponse = response.json()?;
+    Ok(identity_response.result.identity)
+}
+
+// Struct for deserializing JSON response
+#[derive(Deserialize)]
+struct EpochInfoResponse {
+    result: EpochInfoResult,
+}
+
+#[derive(Deserialize)]
+struct EpochInfoResult {
+    absolute_slot: u64,
+    epoch: u64,
 }
 
 fn main() {
@@ -289,12 +376,19 @@ fn main() {
         }
     });
 
-    let mut state = State::new(NonZeroUsize::new(100_000).unwrap());
+    // Initialize identity synchronously
+    let identity = get_validator_identity().unwrap_or_else(|e| {
+        eprintln!("Failed to fetch validator identity: {e}");
+        std::process::exit(-1);
+    });
+
+    let mut state = State::new(NonZeroUsize::new(100_000).unwrap(), identity);
 
     // Load state from existing json file (if exists)
     state.read_ip_stats_from_json(&file_path);
 
     let mut last_write_timestamp = now_millis();
+    let mut last_get_epoch_info_timestamp = now_millis();
     // let mut last_tx_count_halving_timestamp: u64 = now_millis();
     let mut last_create_ip_blocklist_timestamp: u64 = now_millis();
 
@@ -313,6 +407,11 @@ fn main() {
         if now >= (last_write_timestamp + WRITE_STATS_INTERVAL) {
             state.write_ip_stats_to_json(&file_path);
             last_write_timestamp = now;
+        }
+
+        if now >= (last_get_epoch_info_timestamp + GET_EPOCH_INFO_INTERVAL) {
+            state.get_epoch_info();
+            last_get_epoch_info_timestamp = now;
         }
 
         // Check if it's time to halve the transaction count
