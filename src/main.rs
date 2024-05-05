@@ -307,20 +307,22 @@ impl State {
 
         self.current_slot = epoch_info_response.result.absolute_slot;
         if self.current_epoch != epoch_info_response.result.epoch {
+            // If new epoch or on startup
             self.current_epoch = epoch_info_response.result.epoch;
             self.current_epoch_start_slot = self.current_slot - epoch_info_response.result.slot_index;
             self.get_leader_schedule();
+            println!("Current Identity: {}, Slot: {}, Epoch: {}", self.identity, self.current_slot, self.current_epoch);
         }
 
         let mut slots_since_leader = None;
         let mut slots_until_next_leader = None;
 
-        for &leader_schedule_slot in &self.leader_schedule {
-            if slots_since_leader.is_none() && self.current_slot >= leader_schedule_slot {
-                slots_since_leader = Some(self.current_slot - leader_schedule_slot);
-            } else if slots_until_next_leader.is_none() && leader_schedule_slot > self.current_slot {
+        for &slot in &self.leader_schedule {
+            if slot <= self.current_slot {
+                slots_since_leader = Some(self.current_slot - slot);
+            } else if slots_until_next_leader.is_none() && slot >= self.current_slot {
                 // First slot greater than current_slot
-                slots_until_next_leader = Some(leader_schedule_slot - self.current_slot);
+                slots_until_next_leader = Some(slot - self.current_slot);
             }
             if slots_since_leader.is_some() && slots_until_next_leader.is_some() {
                 break;
@@ -335,8 +337,7 @@ impl State {
             self.near_leader_slots = false;
         }
 
-        println!("Current Identity: {}, Slot: {}, Epoch: {}", self.identity, self.current_slot, self.current_epoch);
-        println!("Slots since leader: {:?}, Slots until leader: {:?}", slots_since_leader, slots_until_next_leader);
+        // println!("Slots since leader: {:?}, Slots until leader: {:?}", slots_since_leader, slots_until_next_leader);
     }
 
     fn get_leader_schedule(&mut self) {

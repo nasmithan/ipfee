@@ -64,7 +64,7 @@ Run the file (need to run as root user if you want to add the ipset blocks)
 target/release/ipfee 127.0.0.1 15111 ipfee.json
 ```
 
-You can view the json output pretty printed this this command: `jq -r '["IP", "TxCount", "DupCount", "AvgFee", "MinFee", "MaxFee", "Blocked"], (to_entries | sort_by(-.value.tx_count)[] | [.key, .value.tx_count, .value.dup_count, .value.avg_fee, .value.min_fee, .value.max_fee, .value.blocked]) | @tsv' ipfee.json | column -t`
+You can view the json output pretty printed this this command: `jq -r '["IP", "TxCount", "DupCount", "AvgFee", "MinFee", "MaxFee", "Blocked", "LeaderTxCount", "LeaderDupCount", "LeaderAvgFee", "LeaderMinFee", "LeaderMaxFee"], (to_entries | sort_by(-.value.tx_count)[] | [.key, .value.tx_count, .value.dup_count, .value.avg_fee, .value.min_fee, .value.max_fee, .value.blocked, .value.leader_tx_count, .value.leader_dup_count, .value.leader_avg_fee, .value.leader_min_fee, .value.leader_max_fee]) | @tsv' ipfee.json | column -t`
 
 ### Step 4. Run new binaries
 
@@ -91,9 +91,7 @@ Flush IPs blocked: `sudo ipset flush custom-blocklist-ips`
 
 ## Ideas / TODO
 
-- 2 caches, one close to leader slots and one far away.
-- Store/read from .json file?
-- Add local DB to store cached information each time banning is performed. Load on startup.
+- Write before closing program
 - Halve data every X hours?
 - Unblock IPs occassionally?
 - Temporary jail IPs
