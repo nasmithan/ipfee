@@ -301,6 +301,7 @@ struct EpochInfoResponse {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct EpochInfoResult {
     absolute_slot: u64,
     epoch: u64,
