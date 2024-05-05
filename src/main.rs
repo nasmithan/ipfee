@@ -21,7 +21,7 @@ use std::time::Instant;
 // const BLOCK_MIN_TXS: u64 = 100;
 // const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 20.0;
 
-const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 3; // 3 seconds
+const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 1; // 1 second
 const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
 
