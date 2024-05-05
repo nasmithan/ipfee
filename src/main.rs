@@ -49,6 +49,8 @@ struct State {
     identity: String,
     current_slot: u64,
     current_epoch: u64,
+    current_epoch_start_slot: u64,
+    leader_schedule: Vec<u64>,
     ip_lookup: LruCache<Signature, IpAddr>,
     ip_avg_fees: LruCache<IpAddr, IpStats>,
 }
@@ -59,6 +61,8 @@ impl Default for State {
             identity: String::new(),
             current_slot: 0,
             current_epoch: 0,
+            current_epoch_start_slot: 0,
+            leader_schedule: vec![],
             ip_lookup: LruCache::new(NonZeroUsize::new(100_000).unwrap()),
             ip_avg_fees: LruCache::new(NonZeroUsize::new(100_000).unwrap()),
         }
@@ -76,6 +80,8 @@ impl State {
             identity,
             current_slot: 0,
             current_epoch: 0,
+            current_epoch_start_slot: 0,
+            leader_schedule: vec![],
         }
     }
 
@@ -262,10 +268,82 @@ impl State {
         self.current_slot = epoch_info_response.result.absolute_slot;
         if self.current_epoch != epoch_info_response.result.epoch {
             self.current_epoch = epoch_info_response.result.epoch;
+            self.current_epoch_start_slot = self.current_slot - epoch_info_response.result.slot_index;
+            self.get_leader_schedule();
+        }
+
+        let mut slots_since_leader = None;
+        let mut slots_until_next_leader = None;
+
+        for &leader_schedule_slot in &self.leader_schedule {
+            if slots_since_leader.is_none() && self.current_slot >= leader_schedule_slot {
+                slots_since_leader = Some(self.current_slot - leader_schedule_slot);
+            } else if slots_until_next_leader.is_none() && leader_schedule_slot > self.current_slot {
+                // First slot greater than current_slot
+                slots_until_next_leader = Some(leader_schedule_slot - self.current_slot);
+            }
+            if slots_since_leader.is_some() && slots_until_next_leader.is_some() {
+                break;
+            }
         }
 
         println!("Current Identity: {}, Slot: {}, Epoch: {}", self.identity, self.current_slot, self.current_epoch);
+        println!("Slots since leader: {:?}, Slots until leader: {:?}", slots_since_leader, slots_until_next_leader);
     }
+
+    fn get_leader_schedule(&mut self) {
+        println!("Getting Leader Schedule");
+        let client = Client::new();
+        let request_body = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"getLeaderSchedule","params":[null,{{"identity":"{}"}}]}}"#,
+            self.identity
+        );
+
+        // Handle the result of `send` using `match`
+        let response = match client.post(RPC_URL).header("Content-Type", "application/json").body(request_body).send() {
+            Ok(response) => response,
+            Err(e) => {
+                eprintln!("Failed to send getEpochInfo request: {e}");
+                return; // Exit the function early
+            },
+        };
+
+        // Handle the result of `json` using `match`
+        let leader_schedule_response: LeaderScheduleResponse = match response.json() {
+            Ok(parsed_response) => parsed_response,
+            Err(e) => {
+                eprintln!("Failed to parse getEpochInfo JSON response: {e}");
+                return; // Exit the function early
+            },
+        };
+
+        if let Some(schedule) = leader_schedule_response.result.get(&self.identity) {
+            // Assign the retrieved vector to `self.leader_schedule`
+            self.leader_schedule = schedule.iter().map(|&slot| slot + self.current_epoch_start_slot).collect();
+        } else {
+            eprintln!("Identity not found in leader schedule");
+        }
+    }
+}
+
+// Struct for deserializing JSON response
+#[derive(Deserialize)]
+struct EpochInfoResponse {
+    result: EpochInfoResult,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EpochInfoResult {
+    absolute_slot: u64,
+    slot_index: u64,
+    epoch: u64,
+}
+
+// Struct for deserializing JSON response
+#[derive(Deserialize)]
+struct LeaderScheduleResponse {
+    result: HashMap<String, Vec<u64>>,
 }
 
 fn now_millis() -> u64 {
@@ -292,19 +370,6 @@ fn get_validator_identity() -> Result<String, Box<dyn Error>> {
 
     let identity_response: IdentityResponse = response.json()?;
     Ok(identity_response.result.identity)
-}
-
-// Struct for deserializing JSON response
-#[derive(Deserialize)]
-struct EpochInfoResponse {
-    result: EpochInfoResult,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EpochInfoResult {
-    absolute_slot: u64,
-    epoch: u64,
 }
 
 fn main() {
