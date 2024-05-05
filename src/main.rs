@@ -21,9 +21,12 @@ const BLOCK_AVG_FEE_BELOW: u64 = 60000;
 const BLOCK_MIN_TXS: u64 = 1000;
 const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 20.0;
 
-const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 5; // 5 seconds
+const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 3; // 3 seconds
 const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
+
+// How close to leader slots to be considered near leader slots
+const NEAR_LEADER_SLOTS: u64 = 10;
 
 const RPC_URL: &str = "http://127.0.0.1:8899";
 
@@ -36,12 +39,29 @@ struct IpStats {
     min_fee: u64,
     max_fee: u64,
     dup_count: u64,
+    leader_tx_count: u64,
+    leader_avg_fee: u64,
+    leader_min_fee: u64,
+    leader_max_fee: u64,
+    leader_dup_count: u64,
     blocked: bool,
 }
 
 impl Default for IpStats {
     fn default() -> Self {
-        IpStats { tx_count: 0, avg_fee: 0, min_fee: 0, max_fee: 0, dup_count: 0, blocked: false }
+        IpStats {
+            tx_count: 0,
+            avg_fee: 0,
+            min_fee: 0,
+            max_fee: 0,
+            dup_count: 0,
+            blocked: false,
+            leader_tx_count: 0,
+            leader_avg_fee: 0,
+            leader_min_fee: 0,
+            leader_max_fee: 0,
+            leader_dup_count: 0,
+        }
     }
 }
 
@@ -50,6 +70,7 @@ struct State {
     current_slot: u64,
     current_epoch: u64,
     current_epoch_start_slot: u64,
+    near_leader_slots: bool,
     leader_schedule: Vec<u64>,
     ip_lookup: LruCache<Signature, IpAddr>,
     ip_avg_fees: LruCache<IpAddr, IpStats>,
@@ -62,6 +83,7 @@ impl Default for State {
             current_slot: 0,
             current_epoch: 0,
             current_epoch_start_slot: 0,
+            near_leader_slots: false,
             leader_schedule: vec![],
             ip_lookup: LruCache::new(NonZeroUsize::new(100_000).unwrap()),
             ip_avg_fees: LruCache::new(NonZeroUsize::new(100_000).unwrap()),
@@ -81,6 +103,7 @@ impl State {
             current_slot: 0,
             current_epoch: 0,
             current_epoch_start_slot: 0,
+            near_leader_slots: false,
             leader_schedule: vec![],
         }
     }
@@ -97,6 +120,9 @@ impl State {
             let entry = self.ip_avg_fees.get_or_insert_mut(ip, || IpStats::default());
 
             entry.dup_count += 1;
+            if self.near_leader_slots {
+                entry.leader_dup_count += 1;
+            }
         }
     }
 
@@ -118,6 +144,20 @@ impl State {
                 entry.min_fee = fee;
             } else if fee > entry.max_fee {
                 entry.max_fee = fee;
+            }
+
+            if self.near_leader_slots {
+                let leader_new_count = entry.leader_tx_count + 1;
+                // Calculate the new average fee for this IP, rounding
+                // to the nearest whole number.
+                entry.leader_avg_fee = (entry.leader_tx_count * entry.leader_avg_fee + fee) / leader_new_count;
+                entry.leader_tx_count = leader_new_count;
+
+                if entry.leader_min_fee == 0 || fee < entry.leader_min_fee {
+                    entry.leader_min_fee = fee;
+                } else if fee > entry.leader_max_fee {
+                    entry.leader_max_fee = fee;
+                }
             }
         }
     }
@@ -285,6 +325,14 @@ impl State {
             if slots_since_leader.is_some() && slots_until_next_leader.is_some() {
                 break;
             }
+        }
+
+        if slots_since_leader.unwrap_or(u64::MIN) < NEAR_LEADER_SLOTS
+            || slots_until_next_leader.unwrap_or(u64::MIN) < NEAR_LEADER_SLOTS
+        {
+            self.near_leader_slots = true;
+        } else {
+            self.near_leader_slots = false;
         }
 
         println!("Current Identity: {}, Slot: {}, Epoch: {}", self.identity, self.current_slot, self.current_epoch);
