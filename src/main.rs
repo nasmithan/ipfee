@@ -13,15 +13,15 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::num::NonZeroUsize;
-// use std::process::Command;
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
-// const BLOCK_AVG_FEE_BELOW: u64 = 60000;
-// const BLOCK_MIN_TXS: u64 = 100;
+const BLOCK_AVG_FEE_BELOW: u64 = 30000;
+const BLOCK_MIN_TXS: u64 = 500;
 // const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 20.0;
 
-const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 1; // 1 second
+const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 5; // 5 seconds
 const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
 
@@ -203,66 +203,64 @@ impl State {
     //     }
     // }
 
-    // pub fn create_ip_blocklist(&mut self) {
-    //     // Step 1: Extract and sort all records by txs descending
-    //     let mut all_records: Vec<(IpAddr, IpStats)> = Vec::new();
+    pub fn create_ip_blocklist(&mut self) {
+        // Step 1: Extract and sort all records by txs descending
+        let mut all_records: Vec<(IpAddr, IpStats)> = Vec::new();
 
-    //     for (ip, stats) in self.ip_avg_fees.iter() {
-    //         all_records.push((*ip, stats.clone())); // Clone each entry
-    //     }
+        for (ip, stats) in self.ip_avg_fees.iter() {
+            all_records.push((*ip, stats.clone())); // Clone each entry
+        }
 
-    //     if all_records.is_empty() {
-    //         return;
-    //     }
+        if all_records.is_empty() {
+            return;
+        }
 
-    //     let ips_to_block: Vec<IpAddr> = all_records
-    //         .iter()
-    //         .filter_map(|(ip, stats)| {
-    //             if ((stats.leader_avg_fee < BLOCK_AVG_FEE_BELOW && stats.leader_tx_count > BLOCK_MIN_TXS)
-    //                 || ((stats.dup_count as f64 / stats.tx_count as f64) > BLOCK_ABOVE_DUPS_TX_RATIO
-    //                     && stats.avg_fee < 120000
-    //                     && stats.min_fee < 15000
-    //                     && (stats.tx_count > 50 || stats.dup_count > 500))
-    //                 || (stats.tx_count < 1 && stats.dup_count > 1000)
-    //                 || (stats.max_fee <= 15000 && stats.tx_count > 10)
-    //                 || (stats.leader_avg_fee <= 15000 && stats.tx_count > 10))
-    //                 && !stats.blocked
-    //             {
-    //                 // Block if:
-    //                 // 1. AvgFee < 60k lamports && TxCount > 200
-    //                 // 2. (DupCount / TxCount) > 20, avg fee below 120k lamports and min_fee < 15k, and above 50txs or >500 dups.
-    //                 // 3. tx_count = 0, dup_count > 1000
-    //                 Some(*ip) // Dereference and copy the IP address
-    //             } else {
-    //                 None
-    //             }
-    //         })
-    //         .collect();
+        let ips_to_block: Vec<IpAddr> = all_records
+            .iter()
+            .filter_map(|(ip, stats)| {
+                if (stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS) // fee < 30k, count > 500
+                    || (stats.tx_count < 1 && stats.dup_count > 100) // >100 duplicates, 0 first time sender
+                    || (stats.tx_count > 3 && stats.avg_fee == 9544) // Block 9544 fee sender
+                    && !stats.blocked
+                {
+                    // Interesting stats from 4hr data collection without firewall
+                    // - 11% of top 100 IPs only send low fee txs (<10k lamports). 1 of these low IP senders is in gossip! This number will likely grow)
+                    // - 12.4% of the top 500 IPs only send >10k lamports txs, no low fee txs. Half not in gossip.
+                    // - 34.4% of the top 500 IPs sent a tx fee average >100k lamports (1/5th of these high fee payers aren't in gossip!)
+                    // - 80% of the top 100 tx senders send txs >150 slots away from leader slots, while only 11% of the next 400 big tx senders.
+                    // - A single entity used 279 different IPs in a 4 hour period to send many unique low quality <10k lamport txs.
 
-    //     println!("Blocking {} IPs", ips_to_block.len());
+                    Some(*ip) // Dereference and copy the IP address
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-    //     // TODO: automate this, it's required to run at least once
-    //     // sudo ipset create custom-blocklist-ips hash:net
+        println!("Blocking {} IPs", ips_to_block.len());
 
-    //     // TODO: Use Command::new()
-    //     for ip in ips_to_block {
-    //         // Set IP as blocked
-    //         if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
-    //             stats.blocked = true;
-    //         }
+        // TODO: automate this, it's required to run at least once
+        // sudo ipset create custom-blocklist-ips hash:net
 
-    //         let command_string = format!("sudo ipset add custom-blocklist-ips {}", ip);
+        // TODO: Use Command::new()
+        for ip in ips_to_block {
+            // Set IP as blocked
+            if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
+                stats.blocked = true;
+            }
 
-    //         let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
+            let command_string = format!("sudo ipset add custom-blocklist-ips {}", ip);
 
-    //         if output.status.success() {
-    //             println!("Successfully blocked IP: {}", ip);
-    //         } else {
-    //             let err = String::from_utf8_lossy(&output.stderr);
-    //             println!("Error blocking IP {}: {}", ip, err);
-    //         }
-    //     }
-    // }
+            let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
+
+            if output.status.success() {
+                println!("Successfully blocked IP: {}", ip);
+            } else {
+                let err = String::from_utf8_lossy(&output.stderr);
+                println!("Error blocking IP {}: {}", ip, err);
+            }
+        }
+    }
 
     pub fn write_ip_stats_to_json(
         &self,
@@ -567,8 +565,7 @@ fn main() {
 
         // Check if it's time to create ip blocklist
         if now >= (last_create_ip_blocklist_timestamp + CREATE_IP_BLOCKLIST_INTERVAL) {
-            // Disabling blocklist
-            // state.create_ip_blocklist();
+            state.create_ip_blocklist();
             last_create_ip_blocklist_timestamp = now;
         }
     }
