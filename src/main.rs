@@ -35,6 +35,9 @@ const RPC_URL: &str = "http://127.0.0.1:8899";
 #[derive(Clone, Serialize, Deserialize)]
 struct IpStats {
     tx_count: u64,
+    tx_count_5to10k: u64,
+    tx_count_10to20k: u64,
+    tx_count_20to50k: u64,
     avg_fee: u64,
     min_fee: u64,
     max_fee: u64,
@@ -54,6 +57,9 @@ impl Default for IpStats {
     fn default() -> Self {
         IpStats {
             tx_count: 0,
+            tx_count_5to10k: 0,
+            tx_count_10to20k: 0,
+            tx_count_20to50k: 0,
             avg_fee: 0,
             min_fee: 0,
             max_fee: 0,
@@ -150,6 +156,14 @@ impl State {
                 entry.min_fee = fee;
             } else if fee > entry.max_fee {
                 entry.max_fee = fee;
+            }
+
+            if fee <= 10000 {
+                entry.tx_count_5to10k += 1;
+            } else if fee <= 20000 {
+                entry.tx_count_10to20k += 1;
+            } else if fee <= 50000 {
+                entry.tx_count_20to50k += 1;
             }
 
             if self.near_leader_slots {
