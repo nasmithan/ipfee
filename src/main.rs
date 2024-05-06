@@ -218,9 +218,9 @@ impl State {
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
             .filter_map(|(ip, stats)| {
-                if (stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS) // fee < 30k, count > 500
+                if ((stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS) // fee < 30k, count > 500
                     || (stats.tx_count < 1 && stats.dup_count > 100) // >100 duplicates, 0 first time sender
-                    || (stats.tx_count > 3 && stats.avg_fee == 9544) // Block 9544 fee sender
+                    || (stats.tx_count > 3 && stats.avg_fee == 9544)) // Block 9544 fee sender
                     && !stats.blocked
                 {
                     // Interesting stats from 4hr data collection without firewall
