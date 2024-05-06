@@ -40,6 +40,9 @@ struct IpStats {
     max_fee: u64,
     dup_count: u64,
     leader_tx_count: u64,
+    leader_tx_count_5to10k: u64,
+    leader_tx_count_10to20k: u64,
+    leader_tx_count_20to50k: u64,
     leader_avg_fee: u64,
     leader_min_fee: u64,
     leader_max_fee: u64,
@@ -57,6 +60,9 @@ impl Default for IpStats {
             dup_count: 0,
             blocked: false,
             leader_tx_count: 0,
+            leader_tx_count_5to10k: 0,
+            leader_tx_count_10to20k: 0,
+            leader_tx_count_20to50k: 0,
             leader_avg_fee: 0,
             leader_min_fee: 0,
             leader_max_fee: 0,
@@ -157,6 +163,14 @@ impl State {
                     entry.leader_min_fee = fee;
                 } else if fee > entry.leader_max_fee {
                     entry.leader_max_fee = fee;
+                }
+
+                if fee <= 10000 {
+                    entry.leader_tx_count_5to10k += 1;
+                } else if fee <= 20000 {
+                    entry.leader_tx_count_10to20k += 1;
+                } else if fee <= 50000 {
+                    entry.leader_tx_count_20to50k += 1;
                 }
             }
         }
