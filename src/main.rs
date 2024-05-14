@@ -1,7 +1,10 @@
 use bincode::Options;
+use chrono::Utc;
 use clap::{App, Arg};
 use crossbeam::channel::{unbounded, RecvTimeoutError};
 use lru::LruCache;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::to_writer_pretty;
@@ -28,9 +31,12 @@ const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
 // How close to leader slots to be considered near leader slots
 const NEAR_LEADER_SLOTS: u64 = 150;
 
+const RATIO_TO_UNBLOCK: f64 = 0.1;
+const MAX_BLOCKS: u64 = 5;
+
 const RPC_URL: &str = "http://127.0.0.1:8899";
 
-// const TX_COUNT_HALVING_INTERVAL: u64 = 1000 * 60 * 60 * 6; // 6 hours;
+const TX_UNBLOCK_INTERVAL: u64 = 1000 * 60 * 1; // TEMPORARILY EVERY 1 MINS
 
 #[derive(Clone, Serialize, Deserialize)]
 struct IpStats {
@@ -51,6 +57,8 @@ struct IpStats {
     leader_max_fee: u64,
     leader_dup_count: u64,
     blocked: bool,
+    // Number of times this IP has been blocked
+    blocked_count: u64,
 }
 
 impl Default for IpStats {
@@ -73,6 +81,7 @@ impl Default for IpStats {
             leader_min_fee: 0,
             leader_max_fee: 0,
             leader_dup_count: 0,
+            blocked_count: 0,
         }
     }
 }
@@ -190,21 +199,82 @@ impl State {
         }
     }
 
-    // pub fn tx_count_halving(&mut self) {
-    //     // Iterate over each key in the cache
-    //     let keys: Vec<IpAddr> = self.ip_avg_fees.iter().map(|(ip, _)| *ip).collect();
+    // Resets blocks on IPs every given period
+    // Example: If 200 IPs were blocked, this could unblock 50 of them
+    // and reset their stats, allowing them to get back in good graces otherwise
+    // face getting blocked again. If an IP has been blocked more than 10 times
+    // then stop unblocking it.
+    pub fn unblock_ips(&mut self) {
+        let mut all_records: Vec<(IpAddr, IpStats)> = Vec::new();
 
-    //     println!("Halving tx counts");
-    //     for key in keys {
-    //         if let Some(stats) = self.ip_avg_fees.get_mut(&key) {
-    //             stats.tx_count /= 2; // Halve the tx count
-    //             stats.dup_count /= 2; // Halve the tx count
-    //         }
-    //     }
-    // }
+        for (ip, stats) in self.ip_avg_fees.iter() {
+            all_records.push((*ip, stats.clone())); // Clone each entry
+        }
+
+        if all_records.is_empty() {
+            return;
+        }
+
+        // Shuffle the vector
+        let mut rng = thread_rng();
+        all_records.shuffle(&mut rng);
+
+        let ips_to_unblock: Vec<IpAddr> = all_records
+            .iter()
+            .filter_map(|(ip, stats)| {
+                if stats.blocked && stats.blocked_count <= MAX_BLOCKS {
+                    Some(*ip) // Dereference and copy the IP address
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Calculate XX% of the total length of ips_to_unblock
+        let num_to_unblock = (ips_to_unblock.len() as f64 * RATIO_TO_UNBLOCK).ceil() as usize;
+
+        // Select XX% of IPs to unblock
+        let selected_ips_to_unblock: Vec<IpAddr> = ips_to_unblock.into_iter().take(num_to_unblock).collect();
+
+        for ip in selected_ips_to_unblock {
+            if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
+                stats.blocked = false;
+
+                // Reset all counters
+                stats.tx_count = 0;
+                stats.tx_count_5to10k = 0;
+                stats.tx_count_10to20k = 0;
+                stats.tx_count_20to50k = 0;
+                stats.avg_fee = 0;
+                stats.min_fee = 0;
+                stats.max_fee = 0;
+                stats.dup_count = 0;
+                stats.leader_tx_count = 0;
+                stats.leader_tx_count_5to10k = 0;
+                stats.leader_tx_count_10to20k = 0;
+                stats.leader_tx_count_20to50k = 0;
+                stats.leader_avg_fee = 0;
+                stats.leader_min_fee = 0;
+                stats.leader_max_fee = 0;
+                stats.leader_dup_count = 0;
+            }
+
+            let command_string = format!("sudo ipset remove custom-blocklist-ips {}", ip);
+
+            let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
+
+            if output.status.success() {
+                // Print the number of IPs to unblock with timestamp
+                let current_time = Utc::now();
+                println!("[{}] Successfully unblocked IP: {}", current_time.format("%Y-%m-%d %H:%M:%S"), ip);
+            } else {
+                let err = String::from_utf8_lossy(&output.stderr);
+                println!("Error unblocking IP {}: {}", ip, err);
+            }
+        }
+    }
 
     pub fn create_ip_blocklist(&mut self) {
-        // Step 1: Extract and sort all records by txs descending
         let mut all_records: Vec<(IpAddr, IpStats)> = Vec::new();
 
         for (ip, stats) in self.ip_avg_fees.iter() {
@@ -237,16 +307,20 @@ impl State {
             })
             .collect();
 
-        println!("Blocking {} IPs", ips_to_block.len());
+        if ips_to_block.len() > 0 {
+            // Print the number of IPs to unblock with timestamp
+            let current_time = Utc::now();
+            println!("[{}] Blocking {} IPs", current_time.format("%Y-%m-%d %H:%M:%S"), ips_to_block.len());
+        }
 
         // TODO: automate this, it's required to run at least once
         // sudo ipset create custom-blocklist-ips hash:net
 
         // TODO: Use Command::new()
         for ip in ips_to_block {
-            // Set IP as blocked
             if let Some(stats) = self.ip_avg_fees.get_mut(&ip) {
                 stats.blocked = true;
+                stats.blocked_count += 1;
             }
 
             let command_string = format!("sudo ipset add custom-blocklist-ips {}", ip);
@@ -254,7 +328,8 @@ impl State {
             let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
 
             if output.status.success() {
-                println!("Successfully blocked IP: {}", ip);
+                let current_time = Utc::now();
+                println!("[{}] Successfully blocked IP: {}", current_time.format("%Y-%m-%d %H:%M:%S"), ip);
             } else {
                 let err = String::from_utf8_lossy(&output.stderr);
                 println!("Error blocking IP {}: {}", ip, err);
@@ -266,15 +341,12 @@ impl State {
         &self,
         file_path: &str,
     ) {
-        let start = Instant::now();
         let json_map: HashMap<String, IpStats> =
             self.ip_avg_fees.iter().map(|(ip, stats)| (ip.to_string(), stats.clone())).collect();
         let file = File::create(file_path).expect("Unable to create file");
         let writer = BufWriter::new(file);
 
         to_writer_pretty(writer, &json_map).expect("Unable to write JSON");
-        let duration = start.elapsed(); // Calculate elapsed time
-        println!("Successfully wrote json output, time elapsed: {:?}", duration);
     }
 
     pub fn read_ip_stats_from_json(
@@ -532,7 +604,7 @@ fn main() {
 
     let mut last_write_timestamp = now_millis();
     let mut last_get_epoch_info_timestamp = now_millis();
-    // let mut last_tx_count_halving_timestamp: u64 = now_millis();
+    let mut last_unblock_timestamp: u64 = now_millis();
     let mut last_create_ip_blocklist_timestamp: u64 = now_millis();
 
     loop {
@@ -557,11 +629,11 @@ fn main() {
             last_get_epoch_info_timestamp = now;
         }
 
-        // Check if it's time to halve the transaction count
-        // if now >= (last_tx_count_halving_timestamp + TX_COUNT_HALVING_INTERVAL) {
-        //     state.tx_count_halving();
-        //     last_tx_count_halving_timestamp = now;
-        // }
+        // Check if it's time to reset portion of IP blocks
+        if now >= (last_unblock_timestamp + TX_UNBLOCK_INTERVAL) {
+            state.unblock_ips();
+            last_unblock_timestamp = now;
+        }
 
         // Check if it's time to create ip blocklist
         if now >= (last_create_ip_blocklist_timestamp + CREATE_IP_BLOCKLIST_INTERVAL) {
