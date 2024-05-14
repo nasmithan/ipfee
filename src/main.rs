@@ -259,7 +259,7 @@ impl State {
                 stats.leader_dup_count = 0;
             }
 
-            let command_string = format!("sudo ipset remove custom-blocklist-ips {}", ip);
+            let command_string = format!("sudo ipset del custom-blocklist-ips {}", ip);
 
             let output = Command::new("sh").arg("-c").arg(command_string).output().expect("failed to execute process");
 
