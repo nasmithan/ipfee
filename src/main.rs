@@ -22,7 +22,6 @@ use std::time::Instant;
 
 const BLOCK_AVG_FEE_BELOW: u64 = 30000;
 const BLOCK_MIN_TXS: u64 = 500;
-// const BLOCK_ABOVE_DUPS_TX_RATIO: f64 = 20.0;
 
 const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 5; // 5 seconds
 const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
@@ -36,7 +35,7 @@ const MAX_BLOCKS: u64 = 5;
 
 const RPC_URL: &str = "http://127.0.0.1:8899";
 
-const TX_UNBLOCK_INTERVAL: u64 = 1000 * 60 * 1; // TEMPORARILY EVERY 1 MINS
+const TX_UNBLOCK_INTERVAL: u64 = 1000 * 60 * 60 * 12; // 12 hours
 
 #[derive(Clone, Serialize, Deserialize)]
 struct IpStats {
@@ -633,12 +632,16 @@ fn main() {
         if now >= (last_unblock_timestamp + TX_UNBLOCK_INTERVAL) {
             state.unblock_ips();
             last_unblock_timestamp = now;
+            state.write_ip_stats_to_json(&file_path);
+            last_write_timestamp = now;
         }
 
         // Check if it's time to create ip blocklist
         if now >= (last_create_ip_blocklist_timestamp + CREATE_IP_BLOCKLIST_INTERVAL) {
             state.create_ip_blocklist();
             last_create_ip_blocklist_timestamp = now;
+            state.write_ip_stats_to_json(&file_path);
+            last_write_timestamp = now;
         }
     }
 }
