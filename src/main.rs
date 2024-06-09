@@ -34,16 +34,20 @@ const RPC_URL: &str = "http://127.0.0.1:8899";
 struct IpStats {
     tx_count: u64,
     tx_count_under_50k: u64,
+    dup_count: u64,
     avg_fee: u64,
     min_fee: u64,
     max_fee: u64,
-    dup_count: u64,
+    avg_cu_limit: u64,
+    avg_cu_used: u64,
     leader_tx_count: u64,
     leader_tx_count_under_50k: u64,
+    leader_dup_count: u64,
     leader_avg_fee: u64,
     leader_min_fee: u64,
     leader_max_fee: u64,
-    leader_dup_count: u64,
+    leader_avg_cu_limit: u64,
+    leader_avg_cu_used: u64,
     blocked: bool,
 }
 
@@ -56,6 +60,8 @@ impl Default for IpStats {
             min_fee: 0,
             max_fee: 0,
             dup_count: 0,
+            avg_cu_limit: 0,
+            avg_cu_used: 0,
             blocked: false,
             leader_tx_count: 0,
             leader_tx_count_under_50k: 0,
@@ -63,6 +69,8 @@ impl Default for IpStats {
             leader_min_fee: 0,
             leader_max_fee: 0,
             leader_dup_count: 0,
+            leader_avg_cu_limit: 0,
+            leader_avg_cu_used: 0,
         }
     }
 }
@@ -131,6 +139,8 @@ impl State {
     pub fn fee(
         &mut self,
         signature: Signature,
+        cu_limit: u64,
+        cu_used: u64,
         fee: u64,
     ) {
         if let Some(ip) = self.ip_lookup.get(&signature) {
@@ -140,6 +150,8 @@ impl State {
             // Calculate the new average fee for this IP, rounding
             // to the nearest whole number.
             entry.avg_fee = (entry.tx_count * entry.avg_fee + fee) / new_count;
+            entry.avg_cu_limit = (entry.tx_count * entry.avg_cu_limit + fee) / new_count;
+            entry.avg_cu_used = (entry.tx_count * entry.avg_cu_used + fee) / new_count;
             entry.tx_count = new_count;
 
             if entry.min_fee == 0 || fee < entry.min_fee {
@@ -157,6 +169,10 @@ impl State {
                 // Calculate the new average fee for this IP, rounding
                 // to the nearest whole number.
                 entry.leader_avg_fee = (entry.leader_tx_count * entry.leader_avg_fee + fee) / leader_new_count;
+                entry.leader_avg_cu_limit =
+                    (entry.leader_tx_count * entry.leader_avg_cu_limit + cu_limit) / leader_new_count;
+                entry.leader_avg_cu_used =
+                    (entry.leader_tx_count * entry.leader_avg_cu_used + cu_used) / leader_new_count;
                 entry.leader_tx_count = leader_new_count;
 
                 if entry.leader_min_fee == 0 || fee < entry.leader_min_fee {
@@ -509,7 +525,7 @@ fn main() {
             Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => (),
             Ok(IpFeeMsg::UserTx { ip, signature }) => state.usertx(ip, signature),
-            Ok(IpFeeMsg::Fee { signature, fee }) => state.fee(signature, fee),
+            Ok(IpFeeMsg::Fee { signature, cu_limit, cu_used, fee }) => state.fee(signature, cu_limit, cu_used, fee),
         }
 
         let now = now_millis();
