@@ -18,9 +18,6 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Instant;
 
-const BLOCK_AVG_FEE_BELOW: u64 = 30000;
-const BLOCK_MIN_TXS: u64 = 300;
-
 const GET_EPOCH_INFO_INTERVAL: u64 = 1000 * 5; // 5 seconds
 const WRITE_STATS_INTERVAL: u64 = 1000 * 60 * 1; // 1 minute
 const CREATE_IP_BLOCKLIST_INTERVAL: u64 = 1000 * 60 * 2; // 2 minutes
@@ -202,8 +199,9 @@ impl State {
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
             .filter_map(|(ip, stats)| {
-                if ((stats.avg_fee < BLOCK_AVG_FEE_BELOW && stats.tx_count > BLOCK_MIN_TXS) // fee < 30k, count > 500
-                    || (stats.tx_count < 1 && stats.dup_count > 100) // >100 duplicates, 0 first time sender
+                if ((stats.avg_fee < 30_000 && stats.tx_count > 1_000)
+                    || (stats.avg_fee < 6_000 && stats.tx_count > 100)
+                    || (stats.tx_count < 1 && stats.dup_count > 200) // >100 duplicates, 0 first time sender
                     || (stats.tx_count > 3 && stats.avg_fee == 9544)) // Block 9544 fee sender
                     && !stats.blocked
                 {
