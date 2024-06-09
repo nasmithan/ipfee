@@ -150,8 +150,8 @@ impl State {
             // Calculate the new average fee for this IP, rounding
             // to the nearest whole number.
             entry.avg_fee = (entry.tx_count * entry.avg_fee + fee) / new_count;
-            entry.avg_cu_limit = (entry.tx_count * entry.avg_cu_limit + fee) / new_count;
-            entry.avg_cu_used = (entry.tx_count * entry.avg_cu_used + fee) / new_count;
+            entry.avg_cu_limit = (entry.tx_count * entry.avg_cu_limit + cu_limit) / new_count;
+            entry.avg_cu_used = (entry.tx_count * entry.avg_cu_used + cu_used) / new_count;
             entry.tx_count = new_count;
 
             if entry.min_fee == 0 || fee < entry.min_fee {
