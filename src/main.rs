@@ -182,6 +182,9 @@ impl State {
                     entry.leader_tx_count_under_50k += 1;
                 }
             }
+
+            // Set blocked = false for any tx we observe!
+            entry.blocked = false;
         }
     }
 
@@ -199,8 +202,8 @@ impl State {
         let ips_to_block: Vec<IpAddr> = all_records
             .iter()
             .filter_map(|(ip, stats)| {
-                if ((stats.avg_fee < 30_000 && stats.tx_count > 1_000)
-                    || (stats.avg_fee < 6_000 && stats.tx_count > 100)
+                if ((stats.leader_avg_fee < 30_000 && stats.tx_count > 500)
+                    || (stats.avg_fee < 10_000 && stats.tx_count > 200)
                     || (stats.tx_count < 1 && stats.dup_count > 200) // >100 duplicates, 0 first time sender
                     || (stats.tx_count > 3 && stats.avg_fee == 9544)) // Block 9544 fee sender
                     && !stats.blocked
